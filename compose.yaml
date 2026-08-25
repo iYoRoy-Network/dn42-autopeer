@@ -1,0 +1,15 @@
+services:
+  api:
+    build: .
+    image: iyoroynet-autopeer:dev
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      # Use a dedicated clean checkout in real deployments.
+      - ../Bird2-Configuration:/config-repo
+      - ./data:/data/autopeer
+      - ./config:/config:ro
+      # SSH keys/known_hosts should be provided as secrets or read-only mounts in production.
+      - ~/.ssh:/home/autopeer/.ssh:ro
