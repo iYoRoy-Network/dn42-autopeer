@@ -1,0 +1,436 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --surface: #f7fbfa;
+  --surface-card: rgba(255, 255, 255, 0.86);
+  --surface-soft: #e7f1ef;
+  --ink: #12201f;
+  --muted: #5b6c68;
+  --border: rgba(48, 78, 74, 0.16);
+  --brand: #006a6a;
+  --brand-ink: #ffffff;
+  --good: #1d7f45;
+  --warn: #9b6400;
+  --danger: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #0e1514;
+    --surface-card: rgba(22, 30, 29, 0.9);
+    --surface-soft: #182826;
+    --ink: #e0efec;
+    --muted: #9db0ab;
+    --border: rgba(202, 229, 224, 0.16);
+    --brand: #66d1cf;
+    --brand-ink: #003737;
+    --good: #7bd88f;
+    --warn: #ffc657;
+    --danger: #ffb4ab;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(0, 106, 106, 0.14), transparent 34rem),
+    var(--surface);
+  color: var(--ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.loading-screen,
+.login-shell,
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+}
+
+.login-shell {
+  grid-template-columns: minmax(0, 1.1fr) minmax(20rem, 28rem);
+  gap: clamp(2rem, 8vw, 7rem);
+  text-align: left;
+}
+
+.brand-lockup {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  max-width: 42rem;
+}
+
+.brand-lockup h1,
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 4.8rem);
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+}
+
+.brand-lockup p:not(.eyebrow) {
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.brand-mark,
+.rail-brand,
+.empty-icon,
+.identity-avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 1.25rem;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-weight: 800;
+}
+
+.brand-mark {
+  width: 4.5rem;
+  height: 4.5rem;
+  font-size: 2rem;
+  flex: 0 0 auto;
+}
+
+.login-card,
+.peer-overview,
+.status-card {
+  width: 100%;
+  border-color: var(--border);
+  background: var(--surface-card);
+  backdrop-filter: blur(18px);
+}
+
+.login-card {
+  padding: 1.5rem;
+}
+
+kioubit-auth-btn {
+  display: block;
+}
+
+.login-card h2,
+.peer-overview h2,
+.status-card h2,
+.empty-state h2,
+.status-toolbar h2 {
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.login-card p,
+.dialog-note,
+.status-toolbar p,
+.empty-state p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.login-divider {
+  margin: 1.5rem 0;
+}
+
+.navigation {
+  position: fixed;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 5.75rem;
+  padding: 1rem 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-card), transparent 18%);
+  backdrop-filter: blur(18px);
+}
+
+.rail-brand {
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+}
+
+.logout-button {
+  margin-top: auto;
+}
+
+.workspace {
+  width: min(1180px, calc(100% - 5.75rem));
+  margin-left: 5.75rem;
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+
+.topbar,
+.toolbar,
+.status-toolbar,
+.card-heading,
+.job-banner,
+.message,
+.node-summary,
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.topbar {
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--brand);
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.identity {
+  justify-content: flex-end;
+  min-width: 14rem;
+}
+
+.identity-avatar {
+  width: 3rem;
+  height: 3rem;
+  text-transform: uppercase;
+}
+
+.identity strong,
+.identity span {
+  display: block;
+}
+
+.identity span,
+.muted,
+.node-id,
+dt {
+  color: var(--muted);
+}
+
+.message,
+.job-banner,
+.node-summary,
+.empty-state,
+.status-toolbar,
+.toolbar {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--surface-card);
+}
+
+.message {
+  justify-content: space-between;
+}
+
+.message-error {
+  border-color: color-mix(in srgb, var(--danger), transparent 58%);
+}
+
+.message-info {
+  border-color: color-mix(in srgb, var(--brand), transparent 58%);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.status-dot,
+.job-dot {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.status-good,
+.job-succeeded {
+  background: var(--good);
+}
+
+.status-muted,
+.job-failed {
+  background: var(--danger);
+}
+
+.job-queued,
+.job-running,
+.job-validating,
+.job-committing,
+.job-applying {
+  background: var(--warn);
+}
+
+.peer-layout,
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.peer-overview,
+.status-card {
+  padding: 1.25rem;
+}
+
+.card-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.peer-description,
+.endpoint {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.details-grid,
+.metric-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 0;
+}
+
+.details-grid.one-column {
+  grid-template-columns: 1fr;
+}
+
+dt {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.metric-pair div {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--surface-soft);
+}
+
+.metric-pair span,
+.metric-pair strong {
+  display: block;
+}
+
+.metric-pair span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.metric-pair strong {
+  margin-top: 0.35rem;
+  font-size: 1.25rem;
+}
+
+.monospace,
+code {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.empty-state {
+  min-height: 24rem;
+}
+
+.empty-icon {
+  width: 4rem;
+  height: 4rem;
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.dialog-content {
+  display: grid;
+  gap: 1rem;
+  min-width: min(32rem, 82vw);
+}
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.switch-row {
+  justify-content: space-between;
+  padding: 0.75rem 0.25rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 860px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    width: 100%;
+    height: 4.75rem;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workspace {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .topbar,
+  .toolbar,
+  .status-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .identity {
+    justify-content: flex-start;
+  }
+
+  .peer-layout,
+  .status-grid,
+  .details-grid,
+  .metric-pair {
+    grid-template-columns: 1fr;
+  }
+}

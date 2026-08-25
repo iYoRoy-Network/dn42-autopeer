@@ -62,9 +62,6 @@ class Settings(BaseSettings):
     session_secret: str | None = None
     kioubit_domain: str | None = None
     kioubit_public_key_file: Path | None = None
-    # Provider-supplied login page URL. Kioubit returns signed params/signature
-    # values to /auth/callback rather than using an OpenID Connect code flow.
-    kioubit_login_url: str | None = None
 
     metrics_targets_file: Path | None = None
     metrics_timeout_seconds: float = 5.0

@@ -14,6 +14,10 @@ htmlcov/
 data/
 workspace/
 
+# frontend
+frontend/node_modules/
+frontend/dist/
+
 # editor
 .vscode/
 .idea/
