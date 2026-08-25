@@ -29,7 +29,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=builder /dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm -f /tmp/*.whl
-COPY ansible ./ansible
+COPY config ./config
 
 USER autopeer
 EXPOSE 8080

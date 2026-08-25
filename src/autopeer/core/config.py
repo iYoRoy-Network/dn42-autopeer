@@ -53,17 +53,18 @@ class Settings(BaseSettings):
     git_author_name: str = "Autopeer Bot"
     git_author_email: str = "autopeer@localhost"
 
-    auth_mode: Literal["dev-header", "oidc"] = "dev-header"
-    # Admin role is configured outside OAuth: any authenticated ASN in this
+    auth_mode: Literal["dev-header", "kioubit"] = "dev-header"
+    # Admin role is configured outside Kioubit: any authenticated ASN in this
     # comma-separated allowlist receives cross-ASN operator permissions.
     # NoDecode lets the validator accept a human-friendly CSV rather than only
     # pydantic-settings' default JSON array environment representation.
     admin_asns: Annotated[list[int], NoDecode] = Field(default_factory=list)
     session_secret: str | None = None
-    oidc_discovery_url: str | None = None
-    oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
-    oidc_asn_claim: str = "asn"
+    kioubit_domain: str | None = None
+    kioubit_public_key_file: Path | None = None
+    # Provider-supplied login page URL. Kioubit returns signed params/signature
+    # values to /auth/callback rather than using an OpenID Connect code flow.
+    kioubit_login_url: str | None = None
 
     metrics_targets_file: Path | None = None
     metrics_timeout_seconds: float = 5.0
@@ -75,8 +76,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_auth_settings(self) -> Settings:
-        if self.auth_mode == "oidc" and not self.session_secret:
-            raise ValueError("AUTOPEER__SESSION_SECRET is required when auth_mode=oidc")
+        if self.auth_mode != "kioubit":
+            return self
+        if not self.session_secret:
+            raise ValueError("AUTOPEER__SESSION_SECRET is required when auth_mode=kioubit")
+        if not self.kioubit_domain:
+            raise ValueError("AUTOPEER__KIOUBIT_DOMAIN is required when auth_mode=kioubit")
+        if not self.kioubit_public_key_file:
+            raise ValueError("AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE is required when auth_mode=kioubit")
+        if not self.kioubit_public_key_file.is_file():
+            raise ValueError("AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE must reference a readable PEM file")
         return self
 
     @property
