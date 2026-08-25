@@ -11,11 +11,13 @@ class Principal:
 
     The MVP identity model is intentionally ASN-centric: normal users can only
     mutate their own ASN's peer file, while ASNs listed in AUTOPEER__ADMIN_ASNS
-    receive the admin role and may operate across peer ASNs.
+    receive the admin role and may operate across peer ASNs. ``display_name``
+    is presentation-only and never participates in authorization decisions.
     """
 
     asn: int
     role: str = "user"
+    display_name: str | None = None
 
     @property
     def is_admin(self) -> bool:

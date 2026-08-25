@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="iyoroynet-autopeer", version="0.1.0", lifespan=lifespan)
-    # OIDC login stores the authenticated ASN in a signed cookie-backed session.
+    # Kioubit login stores the verified ASN in a signed cookie-backed session.
     # Dev-header mode does not need this middleware, so it is enabled only when configured.
     if settings.session_secret:
         app.add_middleware(

@@ -10,6 +10,7 @@ services:
       # Use a dedicated clean checkout in real deployments.
       - ../Bird2-Configuration:/config-repo
       - ./data:/data/autopeer
+      # Public Kioubit verification key and optional metrics target configuration.
       - ./config:/config:ro
       # SSH keys/known_hosts should be provided as secrets or read-only mounts in production.
       - ~/.ssh:/home/autopeer/.ssh:ro

@@ -72,8 +72,10 @@ pip install -e '.[dev]'
 uvicorn autopeer.main:app --reload
 ```
 
-Development auth uses headers. Production uses Kioubit OIDC once its discovery URL and
-ASN claim name are configured:
+Development auth uses headers. Production uses Kioubit's signed login callback once the
+domain, public key, and provider login URL are configured. The provider redirects to
+`/api/v1/auth/callback?params=...&signature=...`; the backend verifies the
+signature/domain/freshness and stores only the returned ASN in the local session:
 
 ```bash
 curl -H 'X-Autopeer-ASN: 4242423128' http://127.0.0.1:8080/api/v1/me
@@ -93,11 +95,20 @@ All settings use the `AUTOPEER__` prefix and `__` nested delimiter.
 | `AUTOPEER__ALLOW_DIRTY_REPO` | `false` | Permit committing in a dirty config checkout |
 | `AUTOPEER__GIT_AUTHOR_NAME` | `Autopeer Bot` | Commit author name for automated changes |
 | `AUTOPEER__GIT_AUTHOR_EMAIL` | `autopeer@localhost` | Commit author email for automated changes |
-| `AUTOPEER__AUTH_MODE` | `dev-header` | `dev-header` locally, `oidc` in production |
-| `AUTOPEER__SESSION_SECRET` | unset | Required session-signing secret in OIDC mode |
-| `AUTOPEER__OIDC_*` | unset | Kioubit OIDC discovery, client and ASN claim configuration |
+| `AUTOPEER__AUTH_MODE` | `dev-header` | `dev-header` locally, `kioubit` in production |
+| `AUTOPEER__SESSION_SECRET` | unset | Required session-signing secret in Kioubit mode |
+| `AUTOPEER__KIOUBIT_DOMAIN` | unset | Domain expected in Kioubit's signed response |
+| `AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE` | unset | PEM public key used to verify Kioubit signatures |
+| `AUTOPEER__KIOUBIT_LOGIN_URL` | unset | Optional Kioubit provider login page URL; autopeer appends its callback as `return_url` |
 | `AUTOPEER__ADMIN_ASNS` | empty | Comma-separated admin ASN allowlist, for example `4242422024,4242423128` |
 | `AUTOPEER__METRICS_TARGETS_FILE` | unset | YAML map of exporter URLs |
+
+`config/kioubit-public-key.pem` contains the Kioubit public verification key from their example.
+It is public material, not a private credential. Configure `AUTOPEER__KIOUBIT_DOMAIN` with the
+public host name registered with Kioubit (without a path); it must match the signed `domain` value.
+The verified `asn` remains the only authorization identity. A bounded `effective_name` is retained
+as the non-authoritative `display_name` shown by `/api/v1/me`; fields such as prefixes, contacts,
+maintainer data, and tokens from Kioubit's response are discarded.
 
 Example metrics target file:
 
@@ -113,6 +124,9 @@ nodes:
 
 - `GET /healthz` process health
 - `GET /readyz` dependency readiness
+- `GET /api/v1/auth/login` redirect to the configured Kioubit login page
+- `GET /api/v1/auth/callback` verify Kioubit `params` and `signature`, then create a session
+- `POST /api/v1/auth/logout` clear the current session
 - `GET /api/v1/me` current principal
 - `GET /api/v1/nodes` peering-enabled nodes
 - `GET /api/v1/nodes/{node}/peers` current user's peers on a node

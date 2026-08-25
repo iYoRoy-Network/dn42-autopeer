@@ -1,64 +1,60 @@
 from __future__ import annotations
 
-from typing import Any
+from urllib.parse import urlencode
 
-from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from autopeer.api.deps import get_current_principal
 from autopeer.core.config import Settings, get_settings
+from autopeer.core.kioubit import KioubitAuthVerifier
 from autopeer.core.security import Principal
 
 router = APIRouter()
 
 
-def _oidc_client(settings: Settings) -> OAuth:
-    if not all((settings.oidc_discovery_url, settings.oidc_client_id, settings.oidc_client_secret)):
-        raise HTTPException(status_code=503, detail="OIDC is not configured")
-    oauth = OAuth()
-    oauth.register(
-        name="kioubit",
-        client_id=settings.oidc_client_id,
-        client_secret=settings.oidc_client_secret,
-        server_metadata_url=settings.oidc_discovery_url,
-        client_kwargs={"scope": "openid profile"},
-    )
-    return oauth
-
-
-def _asn_from_claims(claims: dict[str, Any], claim_name: str) -> int:
-    raw_asn = claims.get(claim_name)
+def _kioubit_verifier(settings: Settings) -> KioubitAuthVerifier:
+    if not settings.kioubit_domain or not settings.kioubit_public_key_file:
+        raise HTTPException(status_code=503, detail="Kioubit authentication is not configured")
     try:
-        asn = int(raw_asn)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=403, detail="OIDC identity has no valid ASN claim") from exc
-    if not (1 <= asn <= 4_294_967_295):
-        raise HTTPException(status_code=403, detail="OIDC ASN claim is outside the valid range")
-    return asn
+        return KioubitAuthVerifier(settings.kioubit_domain, settings.kioubit_public_key_file)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Kioubit public key is unavailable") from exc
 
 
 @router.get("/auth/login")
-async def login(request: Request, settings: Settings = Depends(get_settings)) -> RedirectResponse:
-    if settings.auth_mode != "oidc":
-        raise HTTPException(status_code=404, detail="OIDC login is disabled")
-    client = _oidc_client(settings).create_client("kioubit")
-    assert client is not None
-    return await client.authorize_redirect(request, request.url_for("auth_callback"))
+def login(request: Request, settings: Settings = Depends(get_settings)) -> RedirectResponse:
+    if settings.auth_mode != "kioubit":
+        raise HTTPException(status_code=404, detail="Kioubit login is disabled")
+    if not settings.kioubit_login_url:
+        raise HTTPException(status_code=503, detail="Kioubit login URL is not configured")
+    callback_url = str(request.url_for("auth_callback"))
+    query = urlencode({"return_url": callback_url})
+    separator = "&" if "?" in settings.kioubit_login_url else "?"
+    return RedirectResponse(url=f"{settings.kioubit_login_url}{separator}{query}")
 
 
 @router.get("/auth/callback", name="auth_callback")
-async def callback(
+def callback(
     request: Request, settings: Settings = Depends(get_settings)
 ) -> RedirectResponse:
-    if settings.auth_mode != "oidc":
-        raise HTTPException(status_code=404, detail="OIDC login is disabled")
-    client = _oidc_client(settings).create_client("kioubit")
-    assert client is not None
-    token = await client.authorize_access_token(request)
-    claims = token.get("userinfo") or await client.userinfo(token=token)
-    asn = _asn_from_claims(claims, settings.oidc_asn_claim)
-    request.session["principal_asn"] = asn
+    if settings.auth_mode != "kioubit":
+        raise HTTPException(status_code=404, detail="Kioubit login is disabled")
+    params = request.query_params.get("params")
+    signature = request.query_params.get("signature")
+    if not params or not signature:
+        raise HTTPException(status_code=400, detail="Kioubit params and signature are required")
+    # URL query parsers decode an unescaped base64 '+' as a space. A signed
+    # Kioubit value is standard base64, where literal spaces are invalid, so
+    # normalize it before verifying without altering the signed value otherwise.
+    params = params.replace(" ", "+")
+    signature = signature.replace(" ", "+")
+    try:
+        identity = _kioubit_verifier(settings).verify(params, signature)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    request.session["principal_asn"] = identity.asn
+    request.session["principal_display_name"] = identity.display_name
     return RedirectResponse(url="/")
 
 
@@ -69,4 +65,8 @@ def logout(request: Request) -> None:
 
 @router.get("/me")
 def me(principal: Principal = Depends(get_current_principal)) -> dict[str, object]:
-    return {"asn": principal.asn, "role": principal.role}
+    return {
+        "asn": principal.asn,
+        "role": principal.role,
+        "display_name": principal.display_name,
+    }

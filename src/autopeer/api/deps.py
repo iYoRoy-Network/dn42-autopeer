@@ -15,12 +15,13 @@ def get_current_principal(
 ) -> Principal:
     """Convert the configured auth mechanism into one authorization principal.
 
-    Whether the ASN comes from Kioubit/OIDC session state or the development
+    Whether the ASN comes from Kioubit signed session state or the development
     header, every route receives the same Principal object. Admin rights are not
     carried by the identity provider; they are derived from the external
     AUTOPEER__ADMIN_ASNS allowlist so multiple operator ASNs can be configured.
     """
-    if settings.auth_mode == "oidc":
+    display_name: str | None = None
+    if settings.auth_mode == "kioubit":
         asn = request.session.get("principal_asn")
         if asn is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="login required")
@@ -30,11 +31,18 @@ def get_current_principal(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session"
             ) from exc
+        session_display_name = request.session.get("principal_display_name")
+        if isinstance(session_display_name, str):
+            display_name = session_display_name
     else:
         dev_principal = principal_from_dev_headers(request.headers.get("X-Autopeer-ASN"))
         asn = dev_principal.asn
 
-    return Principal(asn=asn, role="admin" if asn in set(settings.admin_asns) else "user")
+    return Principal(
+        asn=asn,
+        role="admin" if asn in set(settings.admin_asns) else "user",
+        display_name=display_name,
+    )
 
 
 def get_peer_service(request: Request) -> PeerService:
