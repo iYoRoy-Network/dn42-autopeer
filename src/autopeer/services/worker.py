@@ -12,6 +12,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Worker:
+    """Single consumer for mutation jobs.
+
+    Running exactly one worker thread is the concurrency model: user requests can
+    arrive in parallel, but config-repo writes, Ansible runs, and Git commits are
+    claimed from SQLite and executed one at a time.
+    """
+
     def __init__(self, store: JobStore, peer_service: PeerService, interval_seconds: float = 1.0):
         self.store = store
         self.peer_service = peer_service

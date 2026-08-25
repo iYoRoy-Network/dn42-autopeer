@@ -18,6 +18,12 @@ from autopeer.services.worker import Worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application composition root.
+
+    Keep long-lived dependencies wired here so route handlers stay thin: HTTP
+    routes enqueue/read jobs, while the background worker performs serialized
+    config-repo writes, validation, commits, and optional deployment.
+    """
     settings = get_settings()
     configure_logging(settings.log_level)
     store = JobStore(settings.database_path)
@@ -44,6 +50,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="iyoroynet-autopeer", version="0.1.0", lifespan=lifespan)
+    # OIDC login stores the authenticated ASN in a signed cookie-backed session.
+    # Dev-header mode does not need this middleware, so it is enabled only when configured.
     if settings.session_secret:
         app.add_middleware(
             SessionMiddleware,

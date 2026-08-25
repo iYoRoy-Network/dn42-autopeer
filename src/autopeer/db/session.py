@@ -15,6 +15,12 @@ def utcnow() -> str:
 
 
 class JobStore:
+    """Small durable queue backed by SQLite.
+
+    SQLite is runtime state only: it remembers requested jobs and their status,
+    while the network source of truth remains the Ansible Git repository.
+    """
+
     def __init__(self, path: Path):
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +91,8 @@ class JobStore:
 
     def claim_next(self) -> JobRecord | None:
         with self.connect() as conn:
+            # BEGIN IMMEDIATE takes SQLite's write lock before selecting so two
+            # API processes cannot claim the same queued job at the same time.
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT * FROM jobs WHERE status = ? ORDER BY created_at LIMIT 1",

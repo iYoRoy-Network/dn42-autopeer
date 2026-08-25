@@ -15,6 +15,13 @@ class CommandResult:
 
 
 class AnsibleRunner:
+    """Boundary for external ansible-playbook calls.
+
+    Business code decides what should happen; this adapter only builds command
+    lines, runs them from the config repository, applies timeouts, and redacts
+    failures before they are stored in job errors.
+    """
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.repo_root = settings.config_repo_path

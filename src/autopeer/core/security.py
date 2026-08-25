@@ -7,6 +7,13 @@ from fastapi import HTTPException, status
 
 @dataclass(frozen=True)
 class Principal:
+    """Authenticated actor used by services and routes.
+
+    The MVP identity model is intentionally ASN-centric: normal users can only
+    mutate their own ASN's peer file, while ASNs listed in AUTOPEER__ADMIN_ASNS
+    receive the admin role and may operate across peer ASNs.
+    """
+
     asn: int
     role: str = "user"
 
@@ -23,6 +30,7 @@ class Principal:
 
 
 def principal_from_dev_headers(x_autopeer_asn: str | None) -> Principal:
+    """Development-only identity source for local testing or a trusted reverse proxy."""
     if not x_autopeer_asn:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

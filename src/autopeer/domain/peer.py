@@ -9,6 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# The public API accepts only the DN42 private ASN block for self-service peers.
+# Broader ASN values are still validated because admins and imported YAML may reference them.
 ASN_MIN = 1
 ASN_MAX = 4_294_967_295
 DN42_AUTOPEER_ASN_MIN = 4_242_420_000

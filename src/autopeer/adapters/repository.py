@@ -31,6 +31,14 @@ def dump_yaml(path: Path, data: dict[str, Any], mode: int = 0o644) -> None:
 
 
 class ConfigRepository:
+    """Filesystem adapter for the Bird2-Configuration repository.
+
+    This layer is the only place that understands the Ansible/YAML layout. The
+    rest of the backend deals with validated API/domain models instead of raw
+    paths, and intentionally reads peer files directly instead of relying on
+    ansible-inventory's recursive host_vars merge behavior.
+    """
+
     def __init__(self, root: Path):
         self.root = root
         self.ansible_dir = self.root / "ansible"
@@ -86,6 +94,8 @@ class ConfigRepository:
         if not path.exists():
             return None
         data = load_yaml(path)
+        # The filename is the ownership boundary: AS424242xxxx may only edit
+        # dn42-peers/424242xxxx.yml, so the inner YAML must agree with the path.
         if data.get("asn") != asn:
             raise ValueError(f"peer file {path} has mismatched ASN {data.get('asn')}")
         return data
@@ -144,6 +154,12 @@ class ConfigRepository:
         bgp_transport: BgpTransport,
         extended_next_hop: bool,
     ) -> dict[str, Any]:
+        """Translate the narrow public API schema into the Ansible peer schema.
+
+        User-provided values are limited to description, WireGuard public
+        endpoint/key, BGP transport, and extended-next-hop. Operational fields
+        such as listen_port, fwmark, src/dst, or lla are derived here.
+        """
         wireguard: dict[str, Any] = {
             "public_key": public_key,
             "listen_port": listen_port_for_asn(asn),

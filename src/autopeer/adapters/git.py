@@ -5,6 +5,12 @@ from pathlib import Path
 
 
 class GitClient:
+    """Small wrapper around Git commands used by the mutation worker.
+
+    The backend commits only validated peer-file changes. Git remains the audit
+    log and handoff point to the existing Bird2-Configuration workflow.
+    """
+
     def __init__(
         self,
         repo_root: Path,

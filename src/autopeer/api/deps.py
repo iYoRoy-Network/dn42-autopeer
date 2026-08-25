@@ -13,6 +13,13 @@ def get_current_principal(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> Principal:
+    """Convert the configured auth mechanism into one authorization principal.
+
+    Whether the ASN comes from Kioubit/OIDC session state or the development
+    header, every route receives the same Principal object. Admin rights are not
+    carried by the identity provider; they are derived from the external
+    AUTOPEER__ADMIN_ASNS allowlist so multiple operator ASNs can be configured.
+    """
     if settings.auth_mode == "oidc":
         asn = request.session.get("principal_asn")
         if asn is None:
