@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
@@ -22,19 +20,7 @@ def _kioubit_verifier(settings: Settings) -> KioubitAuthVerifier:
         raise HTTPException(status_code=503, detail="Kioubit public key is unavailable") from exc
 
 
-@router.get("/auth/login")
-def login(request: Request, settings: Settings = Depends(get_settings)) -> RedirectResponse:
-    if settings.auth_mode != "kioubit":
-        raise HTTPException(status_code=404, detail="Kioubit login is disabled")
-    if not settings.kioubit_login_url:
-        raise HTTPException(status_code=503, detail="Kioubit login URL is not configured")
-    callback_url = str(request.url_for("auth_callback"))
-    query = urlencode({"return_url": callback_url})
-    separator = "&" if "?" in settings.kioubit_login_url else "?"
-    return RedirectResponse(url=f"{settings.kioubit_login_url}{separator}{query}")
-
-
-@router.get("/auth/callback", name="auth_callback")
+@router.get("/auth/callback")
 def callback(
     request: Request, settings: Settings = Depends(get_settings)
 ) -> RedirectResponse:

@@ -43,14 +43,27 @@ src/autopeer/
   domain/         Pydantic domain models and validators
   services/       peer, job, worker and metrics orchestration
   db/             SQLite job store
+frontend/         Vue 3 + Vite + mdui peer/admin UI
 tests/            unit/integration tests
 ```
 
-## Frontend repo recommendation
+## Frontend
 
-Start with a monorepo: keep a future Vue/Vite frontend in `frontend/` in this repository. The API
-contract, Docker Compose, dev auth, and deployment dashboard will evolve together early on. Split
-frontend into a separate repository later only if release cadence, permissions, or hosting diverge.
+The repository includes a Vue 3 + Vite frontend using [mdui](https://www.mdui.org/) web components
+under `frontend/`. It supports Kioubit login, development-header login, node/peer selection, peer
+create/edit/delete jobs, job polling, and exporter-derived session status cards. mdui works directly
+with Vue because its components are standard web components.
+
+Run both services with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Open the frontend at `http://127.0.0.1:5173`. Vite proxies `/api/*` to the API service, so browser
+requests retain the signed Kioubit session cookie without CORS configuration. For local frontend-only
+development, run `npm install && npm run dev` from `frontend/`; its default proxy target is
+`http://localhost:8080`.
 
 ## Development
 
@@ -72,10 +85,18 @@ pip install -e '.[dev]'
 uvicorn autopeer.main:app --reload
 ```
 
-Development auth uses headers. Production uses Kioubit's signed login callback once the
-domain, public key, and provider login URL are configured. The provider redirects to
-`/api/v1/auth/callback?params=...&signature=...`; the backend verifies the
-signature/domain/freshness and stores only the returned ASN in the local session:
+In a second terminal for the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Development auth uses headers. In production the Vue frontend uses Kioubit's documented
+`<kioubit-auth-btn>` form component. It submits `return=https://<frontend-origin>/api/v1/auth/callback`
+to Kioubit; the frontend proxy forwards the signed callback to the backend, which verifies
+signature/domain/freshness and stores the returned identity in the local session:
 
 ```bash
 curl -H 'X-Autopeer-ASN: 4242423128' http://127.0.0.1:8080/api/v1/me
@@ -99,7 +120,6 @@ All settings use the `AUTOPEER__` prefix and `__` nested delimiter.
 | `AUTOPEER__SESSION_SECRET` | unset | Required session-signing secret in Kioubit mode |
 | `AUTOPEER__KIOUBIT_DOMAIN` | unset | Domain expected in Kioubit's signed response |
 | `AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE` | unset | PEM public key used to verify Kioubit signatures |
-| `AUTOPEER__KIOUBIT_LOGIN_URL` | unset | Optional Kioubit provider login page URL; autopeer appends its callback as `return_url` |
 | `AUTOPEER__ADMIN_ASNS` | empty | Comma-separated admin ASN allowlist, for example `4242422024,4242423128` |
 | `AUTOPEER__METRICS_TARGETS_FILE` | unset | YAML map of exporter URLs |
 
@@ -124,7 +144,6 @@ nodes:
 
 - `GET /healthz` process health
 - `GET /readyz` dependency readiness
-- `GET /api/v1/auth/login` redirect to the configured Kioubit login page
 - `GET /api/v1/auth/callback` verify Kioubit `params` and `signature`, then create a session
 - `POST /api/v1/auth/logout` clear the current session
 - `GET /api/v1/me` current principal

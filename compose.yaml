@@ -14,3 +14,13 @@ services:
       - ./config:/config:ro
       # SSH keys/known_hosts should be provided as secrets or read-only mounts in production.
       - ~/.ssh:/home/autopeer/.ssh:ro
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8080
+    depends_on:
+      - api
