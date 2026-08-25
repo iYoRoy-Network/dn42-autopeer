@@ -19,6 +19,13 @@ from autopeer.domain.peer import (
 
 
 class PeerService:
+    """Application use-case layer for self-service DN42 peer mutations.
+
+    API routes only authorize and enqueue jobs. The worker calls this service to
+    serialize the side effects: validate ownership/node state, update one peer
+    YAML file, render/validate the host, commit to Git, and optionally deploy.
+    """
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.repo = ConfigRepository(settings.config_repo_path)
@@ -90,6 +97,8 @@ class PeerService:
         after_count = len(self.repo.list_peer_asns(node))
         self.git.assert_clean_or_only(changed_paths, self.settings.allow_dirty_repo)
 
+        # Commit only after a full render/validate pass succeeds. That keeps Git
+        # history as the record of deployable intent, not failed user attempts.
         self.ansible.render_and_validate(node, render_wireguard=apply_wireguard)
         commit_sha = self.git.add_and_commit(
             changed_paths,
@@ -100,6 +109,9 @@ class PeerService:
 
         deploy_result = "skipped"
         if self.settings.deploy_enabled:
+            # The targeted playbook can replace one peer's files, but first/last
+            # peer transitions may also create/remove include directories or host
+            # level service state, so fall back to the broader host playbooks.
             fallback_full = (before_count == 0 and after_count == 1) or (
                 before_count == 1 and after_count == 0
             )

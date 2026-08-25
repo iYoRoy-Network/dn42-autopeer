@@ -13,7 +13,7 @@ Python/FastAPI control-plane API for DN42 autopeering backed by the existing
 - WireGuard preshared keys are deliberately out of scope for this MVP until their lifecycle,
   encryption, and rotation policy are designed.
 - The backend writes canonical YAML, updates git, runs Ansible render/validate, and optionally
-  deploys.
+  deploys through the playbooks stored in the Bird2-Configuration repo.
 - Metrics are fetched directly from exporter `/metrics` endpoints and parsed with
   `prometheus-client`; Prometheus is not required for the MVP.
 
@@ -26,9 +26,10 @@ because `ansible/tasks/load-dn42-peers.yml` aggregates them into `dn42.peers`, b
 configuration limitation. The backend therefore never reads host state through `ansible-inventory`;
 it parses the YAML files directly and only writes the fixed `dn42-peers/<asn>.yml` path.
 
-Existing Ansible playbooks can deploy at host granularity, not ASN granularity. This project also
-ships an optional targeted peer playbook under `ansible/playbooks/deploy-dn42-peer.yml`, but the
-safest default remains host-level full render/validate before any remote apply.
+Existing Ansible playbooks can deploy at host granularity, not ASN granularity. The targeted peer
+playbook lives in `Bird2-Configuration/ansible/playbooks/deploy-dn42-peer.yml`, so the backend can
+invoke the same config repository checkout for both render/validate and deploy. The safest default
+still remains host-level full render/validate before any remote apply.
 
 ## Repository layout
 
@@ -40,7 +41,6 @@ src/autopeer/
   domain/         Pydantic domain models and validators
   services/       peer, job, worker and metrics orchestration
   db/             SQLite job store
-ansible/          autopeer-specific targeted playbooks
 tests/            unit/integration tests
 ```
 
@@ -94,7 +94,7 @@ All settings use the `AUTOPEER__` prefix and `__` nested delimiter.
 | `AUTOPEER__AUTH_MODE` | `dev-header` | `dev-header` locally, `oidc` in production |
 | `AUTOPEER__SESSION_SECRET` | unset | Required session-signing secret in OIDC mode |
 | `AUTOPEER__OIDC_*` | unset | Kioubit OIDC discovery, client and ASN claim configuration |
-| `AUTOPEER__ADMIN_ASNS` | empty | Comma-separated admin ASN list |
+| `AUTOPEER__ADMIN_ASNS` | empty | Comma-separated admin ASN allowlist, for example `4242422024,4242423128` |
 | `AUTOPEER__METRICS_TARGETS_FILE` | unset | YAML map of exporter URLs |
 
 Example metrics target file:

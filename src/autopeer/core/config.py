@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _csv_ints(value: str | list[int] | tuple[int, ...] | None) -> list[int]:
+    """Parse comma-separated env values like AUTOPEER__ADMIN_ASNS=4242,4243."""
     if value is None or value == "":
         return []
     if isinstance(value, str):
@@ -17,6 +18,8 @@ def _csv_ints(value: str | list[int] | tuple[int, ...] | None) -> list[int]:
 
 
 class Settings(BaseSettings):
+    # All runtime knobs come from AUTOPEER__* environment variables or .env.
+    # Nested delimiter is reserved for future grouped settings while keeping one flat class today.
     model_config = SettingsConfigDict(
         env_prefix="AUTOPEER__",
         env_nested_delimiter="__",
@@ -51,7 +54,11 @@ class Settings(BaseSettings):
     git_author_email: str = "autopeer@localhost"
 
     auth_mode: Literal["dev-header", "oidc"] = "dev-header"
-    admin_asns: list[int] = Field(default_factory=list)
+    # Admin role is configured outside OAuth: any authenticated ASN in this
+    # comma-separated allowlist receives cross-ASN operator permissions.
+    # NoDecode lets the validator accept a human-friendly CSV rather than only
+    # pydantic-settings' default JSON array environment representation.
+    admin_asns: Annotated[list[int], NoDecode] = Field(default_factory=list)
     session_secret: str | None = None
     oidc_discovery_url: str | None = None
     oidc_client_id: str | None = None
@@ -76,9 +83,9 @@ class Settings(BaseSettings):
     def resolved_targeted_peer_playbook(self) -> Path:
         if self.targeted_peer_playbook is not None:
             return self.targeted_peer_playbook
-        return (
-            Path(__file__).resolve().parents[3] / "ansible" / "playbooks" / "deploy-dn42-peer.yml"
-        )
+        # The targeted deploy playbook belongs to the config repository so it
+        # evolves with the same Ansible layout as the peer YAML it applies.
+        return self.config_repo_path / "ansible" / "playbooks" / "deploy-dn42-peer.yml"
 
 
 @lru_cache
