@@ -26,10 +26,12 @@ because `ansible/tasks/load-dn42-peers.yml` aggregates them into `dn42.peers`, b
 configuration limitation. The backend therefore never reads host state through `ansible-inventory`;
 it parses the YAML files directly and only writes the fixed `dn42-peers/<asn>.yml` path.
 
-Existing Ansible playbooks can deploy at host granularity, not ASN granularity. The targeted peer
-playbook lives in `Bird2-Configuration/ansible/playbooks/deploy-dn42-peer.yml`, so the backend can
-invoke the same config repository checkout for both render/validate and deploy. The safest default
-still remains host-level full render/validate before any remote apply.
+The targeted peer playbook lives in
+`Bird2-Configuration/ansible/playbooks/deploy-dn42-peer.yml`. It renders only
+`dn42_<asn>.conf` and `dn42/peers/dn42_<asn>.conf` for the selected peer, then
+updates only those remote files, runs `birdc configure`, and starts/stops or
+syncs only that WireGuard interface. It deliberately does not run the host-wide
+render or validate playbooks.
 
 ## Repository layout
 
