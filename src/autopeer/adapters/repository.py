@@ -169,9 +169,15 @@ class ConfigRepository:
             return dn42.get("own_ipv6")
         return None
 
-    def connection_info(self, node: str, asn: int, transport: BgpTransport) -> dict[str, Any]:
+    def connection_info(
+        self,
+        node: str,
+        asn: int,
+        transport: BgpTransport,
+        existing: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         metadata = self.node_metadata(node)
-        port = self.allocated_listen_port(node, asn)
+        port = self.allocated_listen_port(node, asn, existing)
         if transport.mode == BgpTransportMode.ipv6_link_local:
             local_address = "fe80::2024"
         else:
@@ -202,7 +208,7 @@ class ConfigRepository:
     ) -> dict[str, Any]:
         """Translate the narrow public API schema into the Ansible peer schema.
 
-        User-provided values are limited to description, WireGuard public
+        User-provided values are limited to contact information, WireGuard
         endpoint/key, BGP transport, and extended-next-hop. Operational fields
         such as listen_port, fwmark, src/dst, or lla are derived here.
         """
@@ -247,12 +253,12 @@ class ConfigRepository:
             description=data.get("description"),
             wireguard_public_key=wg.get("public_key", ""),
             wireguard_endpoint=wg.get("endpoint"),
-            listen_port=int(wg.get("listen_port", listen_port_for_asn(asn))),
+            listen_port=int(wg.get("listen_port") or self.allocated_listen_port(node, asn, data)),
             bgp_transport=transport,
             address_families=["ipv4", "ipv6"],
             extended_next_hop=bool(bgp.get("extended_next_hop", False)),
             connection_info=PeerConnectionInfo.model_validate(
-                self.connection_info(node, asn, transport)
+                self.connection_info(node, asn, transport, data)
             ),
         )
 

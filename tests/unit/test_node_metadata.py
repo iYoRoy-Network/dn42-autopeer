@@ -26,6 +26,20 @@ def build_repository(
     return ConfigRepository(tmp_path)
 
 
+def test_display_metadata_is_parsed():
+    metadata = NodePeeringMetadata.from_yaml(
+        {
+            "display_name": "Example node",
+            "subtitle": "A short description",
+            "protocol_stack": "ipv4",
+        }
+    )
+
+    assert metadata.display_name == "Example node"
+    assert metadata.subtitle == "A short description"
+    assert metadata.protocol_stack == "ipv4"
+
+
 def test_empty_endpoint_public_key_and_exporters_are_unset():
     metadata = NodePeeringMetadata.from_yaml(
         {
@@ -91,6 +105,29 @@ def test_repository_preserves_existing_listen_port(tmp_path: Path):
     existing = {"wireguard": {"listen_port": 52002}}
 
     assert repo.allocated_listen_port("test01", 4242420001, existing) == 52002
+
+
+def test_peer_response_uses_persisted_port_for_legacy_asn(tmp_path: Path):
+    repo = build_repository(
+        tmp_path,
+        peering={"listen_port_policy": {"mode": "asn_suffix"}},
+    )
+    peer = {
+        "asn": 4201273722,
+        "wireguard": {
+            "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "listen_port": 33722,
+            "endpoint": "legacy.example:33722",
+        },
+        "lla": "fe80::1",
+        "bgp": {"extended_next_hop": True},
+    }
+
+    response = repo.peer_to_response("test01", 4201273722, peer)
+
+    assert response.listen_port == 33722
+    assert response.connection_info is not None
+    assert response.connection_info.listen_port == 33722
 
 
 def test_repository_reports_exhausted_port_range(tmp_path: Path):

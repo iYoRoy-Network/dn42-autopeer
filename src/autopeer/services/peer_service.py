@@ -160,7 +160,7 @@ class PeerService:
             return self.repo.build_peer_yaml(
                 node=node,
                 asn=asn,
-                description=request.description,
+                description=request.contact,
                 public_key=request.wireguard.public_key,
                 endpoint=request.wireguard.endpoint,
                 bgp_transport=request.bgp.transport,
@@ -171,8 +171,8 @@ class PeerService:
         assert existing is not None
         wg = existing.setdefault("wireguard", {})
         bgp = existing.setdefault("bgp", {})
-        if "description" in request.model_fields_set:
-            existing["description"] = request.description or f"AS{asn}"
+        if "contact" in request.model_fields_set:
+            existing["description"] = request.contact
         if request.wireguard is not None:
             if (
                 "public_key" in request.wireguard.model_fields_set
@@ -211,4 +211,4 @@ class PeerService:
         return operation == "create" or "wireguard" in data
 
     def _operation_touches_bird(self, operation: str, data: dict[str, Any]) -> bool:
-        return operation == "create" or any(key in data for key in ("description", "bgp"))
+        return operation == "create" or any(key in data for key in ("contact", "bgp"))

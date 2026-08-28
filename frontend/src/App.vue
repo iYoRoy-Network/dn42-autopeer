@@ -24,19 +24,47 @@ const form = reactive({
   mode: 'create',
   node: '',
   asn: '',
-  description: '',
+  contact: '',
   publicKey: '',
   endpoint: '',
   transportMode: 'ipv6_link_local',
   remoteAddress: '',
   extendedNextHop: true,
 })
+const wizardStep = ref(1)
 
 setDevAsn(storedDevAsn)
 
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const statusByNode = computed(() => new Map(statuses.value.map((status) => [status.node, status])))
 const sessionCount = computed(() => sessions.value.length)
+const onlineSessionCount = computed(
+  () => sessions.value.filter((session) => statusForSession(session)?.bgp?.up).length,
+)
+const totalReceived = computed(() =>
+  sessions.value.reduce(
+    (total, session) => total + Number(statusForSession(session)?.wireguard?.rx_bytes || 0),
+    0,
+  ),
+)
+const totalTransmitted = computed(() =>
+  sessions.value.reduce(
+    (total, session) => total + Number(statusForSession(session)?.wireguard?.tx_bytes || 0),
+    0,
+  ),
+)
+const totalImportedRoutes = computed(() =>
+  sessions.value.reduce(
+    (total, session) => total + Number(statusForSession(session)?.bgp?.routes_imported || 0),
+    0,
+  ),
+)
+const totalExportedRoutes = computed(() =>
+  sessions.value.reduce(
+    (total, session) => total + Number(statusForSession(session)?.bgp?.routes_exported || 0),
+    0,
+  ),
+)
 
 function sessionsForNode(nodeId) {
   return sessions.value.filter((session) => session.node.id === nodeId)
@@ -75,12 +103,13 @@ function resetForm(session = null, node = null) {
   form.mode = peer ? 'edit' : 'create'
   form.node = session?.node.id ?? node?.id ?? ''
   form.asn = peer ? String(peer.asn) : String(isAdmin.value ? '' : (currentUser.value?.asn ?? ''))
-  form.description = peer?.description ?? ''
+  form.contact = peer?.description ?? ''
   form.publicKey = peer?.wireguard_public_key ?? ''
   form.endpoint = peer?.wireguard_endpoint ?? ''
   form.transportMode = peer?.bgp_transport?.mode ?? 'ipv6_link_local'
   form.remoteAddress = peer?.bgp_transport?.remote_address ?? ''
   form.extendedNextHop = peer?.extended_next_hop ?? true
+  wizardStep.value = 1
 }
 
 async function loadSessions() {
@@ -149,15 +178,31 @@ function openEdit(session) {
   dialogOpen.value = true
 }
 
-function openSession(session) {
+function openSessionDetails(session) {
   activeSession.value = session
+  activePage.value = 'session-detail'
+}
+
+function backToSessions() {
   activePage.value = 'sessions'
-  window.setTimeout(() => {
-    document.getElementById(`session-${session.node.id}-${session.peer.asn}`)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-    })
-  })
+  activeSession.value = null
+}
+
+function nextWizardStep() {
+  if (wizardStep.value === 1 && !form.contact.trim()) {
+    error.value = 'Contact information is required.'
+    return
+  }
+  if (wizardStep.value === 2 && (!form.publicKey.trim() || !form.endpoint.trim() || !form.remoteAddress.trim())) {
+    error.value = 'WireGuard and BGP connection details are required.'
+    return
+  }
+  error.value = ''
+  if (wizardStep.value < 3) wizardStep.value += 1
+}
+
+function previousWizardStep() {
+  if (wizardStep.value > 1) wizardStep.value -= 1
 }
 
 function asRequestPayload() {
@@ -174,12 +219,12 @@ function asRequestPayload() {
   }
   if (form.mode === 'create') {
     return {
-      description: form.description || null,
+      contact: form.contact,
       wireguard,
       bgp: { ...bgp, address_families: ['ipv4', 'ipv6'] },
     }
   }
-  return { description: form.description || null, wireguard, bgp }
+  return { contact: form.contact, wireguard, bgp }
 }
 
 function watchJob(job) {
@@ -208,6 +253,16 @@ function watchJob(job) {
 
 async function saveSession() {
   if (!form.node) return
+  if (!form.contact.trim()) {
+    error.value = 'Contact information is required.'
+    wizardStep.value = 1
+    return
+  }
+  if (!form.publicKey.trim() || !form.endpoint.trim() || !form.remoteAddress.trim()) {
+    error.value = 'WireGuard and BGP connection details are required.'
+    wizardStep.value = 2
+    return
+  }
   if (isAdmin.value && form.mode === 'create' && !form.asn.trim()) {
     error.value = 'Peer ASN is required for an administrator-created session.'
     return
@@ -370,189 +425,200 @@ onUnmounted(() => clearInterval(pollTimer.value))
           </section>
 
           <section class="node-grid">
-            <mdui-card v-for="node in nodes" :key="node.id" class="node-card" variant="outlined">
-              <div class="card-heading">
+            <mdui-card v-for="node in nodes" :key="node.id" class="node-card compact-node" variant="outlined">
+              <div class="node-summary">
                 <div>
                   <p class="eyebrow">{{ node.id }}</p>
-                  <h2>{{ node.name }}</h2>
+                  <h2>{{ node.peering.display_name || node.name }}</h2>
+                  <p class="node-subtitle">{{ node.peering.subtitle || 'DN42 WireGuard peering' }}</p>
                 </div>
-                <span class="status-pill" :class="node.peering_enabled ? 'status-online' : 'status-offline'">
-                  {{ node.peering_enabled ? 'Open' : 'Closed' }}
+                <span class="stack-pill">
+                  {{ node.peering.protocol_stack === 'ipv4' ? 'IPv4 only' : node.peering.protocol_stack === 'ipv6' ? 'IPv6 only' : 'Dual stack' }}
                 </span>
               </div>
-              <dl class="node-details">
-                <div><dt>Configured peers</dt><dd>{{ node.peer_count }}</dd></div>
-                <div><dt>Online peers</dt><dd>{{ node.online_peer_count ?? '—' }}</dd></div>
-                <div><dt>WireGuard endpoint</dt><dd>{{ node.peering.endpoint || 'Not configured' }}</dd></div>
-                <div><dt>WireGuard public key</dt><dd class="monospace">{{ node.peering.publickey || 'Not configured' }}</dd></div>
-                <div>
-                  <dt>Listen port policy</dt>
-                  <dd>
-                    {{
-                      node.peering.listen_port_policy.mode === 'range'
-                        ? `${node.peering.listen_port_policy.port_min}–${node.peering.listen_port_policy.port_max}`
-                        : 'ASN suffix'
-                    }}
-                  </dd>
-                </div>
-                <div><dt>My sessions</dt><dd>{{ sessionsForNode(node.id).length }}</dd></div>
-              </dl>
-              <mdui-divider />
               <div class="node-actions">
-                <template v-if="sessionsForNode(node.id).length">
-                  <span class="configured-label">{{ sessionsForNode(node.id).length }} session{{ sessionsForNode(node.id).length > 1 ? 's' : '' }} configured</span>
-                  <mdui-button variant="outlined" @click="openSession(sessionsForNode(node.id)[0])">
-                    View session{{ sessionsForNode(node.id).length > 1 ? 's' : '' }}
-                  </mdui-button>
-                </template>
-                <template v-else>
-                  <span class="configured-label">No session configured</span>
-                  <mdui-button variant="filled" :disabled="!node.peering_enabled" @click="openCreate(node)">
-                    Create session
-                  </mdui-button>
-                </template>
+                <mdui-button
+                  v-if="sessionsForNode(node.id).length"
+                  variant="outlined"
+                  @click="openSessionDetails(sessionsForNode(node.id)[0])"
+                >
+                  View peering
+                </mdui-button>
+                <mdui-button v-else variant="filled" :disabled="!node.peering_enabled" @click="openCreate(node)">
+                  Start peering
+                </mdui-button>
               </div>
             </mdui-card>
           </section>
         </template>
 
-        <template v-else>
+        <template v-else-if="activePage === 'sessions'">
           <section class="page-heading sessions-heading">
             <div>
-              <p class="eyebrow">YOUR CONFIGURATION</p>
-              <h1>My sessions</h1>
-              <p>Each session is one peer on one node, containing its WireGuard tunnel and BGP session configuration.</p>
+              <p class="eyebrow">YOUR PEERINGS</p>
+              <h1>My sessions <span class="heading-count">{{ sessionCount }}</span></h1>
+              <p>Live health and useful routing data for your WireGuard and BGP sessions.</p>
             </div>
-            <mdui-button variant="outlined" :loading="loadingStatus" @click="loadStatus">Refresh status</mdui-button>
+            <div class="heading-actions">
+              <mdui-button variant="outlined" :loading="loadingStatus" @click="loadStatus">Refresh status</mdui-button>
+              <mdui-button variant="filled" @click="activePage = 'nodes'">Add peering</mdui-button>
+            </div>
           </section>
 
-          <section v-if="sessions.length" class="session-list">
-            <mdui-card
-              v-for="session in sessions"
-              :id="`session-${session.node.id}-${session.peer.asn}`"
-              :key="`${session.node.id}-${session.peer.asn}`"
-              class="session-card"
-              :class="{ focused: activeSession?.node.id === session.node.id && activeSession?.peer.asn === session.peer.asn }"
-              variant="outlined"
-            >
-              <div class="session-header">
-                <div>
-                  <p class="eyebrow">{{ session.node.id }} · PEER SESSION</p>
-                  <h2>AS{{ session.peer.asn }} <span>{{ session.peer.description || 'Unnamed session' }}</span></h2>
+          <section v-if="sessions.length" class="session-dashboard">
+            <div class="summary-grid">
+              <article class="summary-card"><span>Health</span><strong>{{ onlineSessionCount }}/{{ sessionCount }}</strong><small>BGP sessions online</small></article>
+              <article class="summary-card"><span>Issues</span><strong>{{ sessionCount - onlineSessionCount }}</strong><small>sessions need attention</small></article>
+              <article class="summary-card"><span>Routes</span><strong>{{ totalImportedRoutes + totalExportedRoutes }}</strong><small>{{ totalImportedRoutes }} imported · {{ totalExportedRoutes }} exported</small></article>
+              <article class="summary-card"><span>Received</span><strong>{{ formatBytes(totalReceived) }}</strong><small>WireGuard total</small></article>
+              <article class="summary-card"><span>Transmitted</span><strong>{{ formatBytes(totalTransmitted) }}</strong><small>WireGuard total</small></article>
+            </div>
+
+            <div class="peering-rows">
+              <article v-for="session in sessions" :key="`${session.node.id}-${session.peer.asn}`" class="peering-row">
+                <div class="peering-node">
+                  <span class="node-avatar">{{ (session.node.peering.display_name || session.node.name).slice(0, 2).toUpperCase() }}</span>
+                  <div>
+                    <strong>{{ session.node.peering.display_name || session.node.name }}</strong>
+                    <span>{{ session.node.peering.subtitle || session.node.id }}</span>
+                  </div>
+                </div>
+                <div class="peering-state">
+                  <strong :class="statusForSession(session)?.bgp?.up ? 'state-good' : 'state-unknown'">
+                    <span class="state-dot" />{{ statusForSession(session)?.bgp?.up ? 'Established' : 'Status unavailable' }}
+                  </strong>
+                  <span>{{ session.peer.bgp_transport.mode.replaceAll('_', ' ') }} · {{ session.peer.address_families.join(' + ') }}</span>
+                </div>
+                <div class="peering-data">
+                  <span>↓ {{ formatBytes(statusForSession(session)?.wireguard?.rx_bytes) }}</span>
+                  <span>↑ {{ formatBytes(statusForSession(session)?.wireguard?.tx_bytes) }}</span>
                 </div>
                 <div class="session-actions">
-                  <mdui-button variant="outlined" @click="openEdit(session)">Edit session</mdui-button>
-                  <mdui-button variant="text" @click="activeSession = session; deleteOpen = true">Remove</mdui-button>
+                  <mdui-button variant="outlined" @click="openSessionDetails(session)">Details</mdui-button>
+                  <mdui-button variant="text" @click="activeSession = session; deleteOpen = true">Delete</mdui-button>
                 </div>
-              </div>
-
-              <div class="session-config">
-                <section class="config-block">
-                  <p class="eyebrow">WIREGUARD</p>
-                  <h3>{{ `dn42_${session.peer.asn}` }}</h3>
-                  <dl class="details-grid one-column">
-                    <div><dt>Endpoint</dt><dd>{{ session.peer.wireguard_endpoint || 'Not configured' }}</dd></div>
-                    <div><dt>Public key</dt><dd class="monospace">{{ session.peer.wireguard_public_key }}</dd></div>
-                    <div><dt>Listen port</dt><dd>{{ session.peer.listen_port }}</dd></div>
-                  </dl>
-                </section>
-
-                <section class="config-block">
-                  <p class="eyebrow">BIRD / BGP</p>
-                  <h3>{{ `dn42_peer_${session.peer.asn}` }}</h3>
-                  <dl class="details-grid one-column">
-                    <div><dt>Transport</dt><dd>{{ session.peer.bgp_transport.mode.replaceAll('_', ' ') }}</dd></div>
-                    <div><dt>Remote address</dt><dd class="monospace">{{ session.peer.bgp_transport.remote_address }}</dd></div>
-                    <div><dt>Address families</dt><dd>{{ session.peer.address_families.join(' + ') }}</dd></div>
-                    <div><dt>Extended next hop</dt><dd>{{ session.peer.extended_next_hop ? 'Enabled' : 'Disabled' }}</dd></div>
-                  </dl>
-                </section>
-
-                <section v-if="session.peer.connection_info" class="config-block">
-                  <p class="eyebrow">GENERATED CONNECTION INFO</p>
-                  <h3>Control-plane response</h3>
-                  <dl class="details-grid one-column">
-                    <div>
-                      <dt>WireGuard endpoint</dt>
-                      <dd>{{ session.peer.connection_info.wireguard_endpoint || 'Not configured' }}</dd>
-                    </div>
-                    <div>
-                      <dt>WireGuard public key</dt>
-                      <dd class="monospace">{{ session.peer.connection_info.public_key || 'Not configured' }}</dd>
-                    </div>
-                    <div>
-                      <dt>BGP local address</dt>
-                      <dd class="monospace">{{ session.peer.connection_info.bgp_local_address }}</dd>
-                    </div>
-                  </dl>
-                </section>
-              </div>
-
-              <section v-if="statusForSession(session)" class="session-status">
-                <div class="card-heading">
-                  <div>
-                    <p class="eyebrow">LIVE STATUS</p>
-                    <h3>{{ statusForSession(session).bgp.up ? 'BGP session online' : 'BGP session unavailable' }}</h3>
-                  </div>
-                  <span class="status-pill" :class="statusForSession(session).bgp.up ? 'status-online' : 'status-offline'">
-                    {{ statusForSession(session).bgp.up ? 'Online' : 'Unavailable' }}
-                  </span>
-                </div>
-                <div class="metric-pair">
-                  <div><span>WireGuard received</span><strong>{{ formatBytes(statusForSession(session).wireguard.rx_bytes) }}</strong></div>
-                  <div><span>WireGuard transmitted</span><strong>{{ formatBytes(statusForSession(session).wireguard.tx_bytes) }}</strong></div>
-                  <div><span>BGP imported</span><strong>{{ statusForSession(session).bgp.routes_imported ?? '—' }}</strong></div>
-                  <div><span>BGP exported</span><strong>{{ statusForSession(session).bgp.routes_exported ?? '—' }}</strong></div>
-                </div>
-                <p class="handshake">Last handshake: {{ formatEpoch(statusForSession(session).wireguard.latest_handshake_seconds) }}</p>
-              </section>
-            </mdui-card>
+              </article>
+            </div>
           </section>
 
           <section v-else class="empty-state compact-empty">
             <div class="empty-icon" aria-hidden="true">+</div>
             <h2>No peer sessions yet</h2>
-            <p>Open the All nodes page and choose a node to create your first WireGuard and BGP session.</p>
+            <p>Choose an available node to create your first WireGuard and BGP session.</p>
             <mdui-button variant="filled" @click="activePage = 'nodes'">Browse nodes</mdui-button>
+          </section>
+        </template>
+
+        <template v-else-if="activePage === 'session-detail' && activeSession">
+          <section class="detail-toolbar">
+            <mdui-button variant="text" @click="backToSessions">← Back to sessions</mdui-button>
+            <div class="session-actions">
+              <mdui-button variant="outlined" @click="openEdit(activeSession)">Edit</mdui-button>
+              <mdui-button variant="text" @click="deleteOpen = true">Delete</mdui-button>
+            </div>
+          </section>
+          <section class="detail-heading">
+            <p class="eyebrow">{{ activeSession.node.id }} · AS{{ activeSession.peer.asn }}</p>
+            <h1>{{ activeSession.node.peering.display_name || activeSession.node.name }}</h1>
+            <p>{{ activeSession.node.peering.subtitle || 'DN42 WireGuard peering session' }}</p>
+          </section>
+          <section class="detail-grid">
+            <article class="detail-panel">
+              <h2>Peer configuration</h2>
+              <dl class="details-grid">
+                <div><dt>Contact</dt><dd>{{ activeSession.peer.description }}</dd></div>
+                <div><dt>WireGuard interface</dt><dd class="monospace">dn42_{{ activeSession.peer.asn }}</dd></div>
+                <div><dt>Remote endpoint</dt><dd class="monospace">{{ activeSession.peer.wireguard_endpoint }}</dd></div>
+                <div><dt>Remote public key</dt><dd class="monospace">{{ activeSession.peer.wireguard_public_key }}</dd></div>
+                <div><dt>BGP transport</dt><dd>{{ activeSession.peer.bgp_transport.mode.replaceAll('_', ' ') }}</dd></div>
+                <div><dt>Remote BGP address</dt><dd class="monospace">{{ activeSession.peer.bgp_transport.remote_address }}</dd></div>
+              </dl>
+            </article>
+            <article class="detail-panel">
+              <h2>Our connection information</h2>
+              <dl class="details-grid one-column">
+                <div><dt>WireGuard endpoint</dt><dd class="monospace">{{ activeSession.peer.connection_info?.wireguard_endpoint || 'Not configured' }}</dd></div>
+                <div><dt>WireGuard public key</dt><dd class="monospace">{{ activeSession.peer.connection_info?.public_key || 'Not configured' }}</dd></div>
+                <div><dt>BGP local address</dt><dd class="monospace">{{ activeSession.peer.connection_info?.bgp_local_address }}</dd></div>
+              </dl>
+            </article>
+          </section>
+          <section v-if="statusForSession(activeSession)" class="detail-metrics">
+            <article><span>BGP status</span><strong>{{ statusForSession(activeSession).bgp.up ? 'Established' : 'Unavailable' }}</strong></article>
+            <article><span>Imported routes</span><strong>{{ statusForSession(activeSession).bgp.routes_imported ?? '—' }}</strong></article>
+            <article><span>Exported routes</span><strong>{{ statusForSession(activeSession).bgp.routes_exported ?? '—' }}</strong></article>
+            <article><span>Received</span><strong>{{ formatBytes(statusForSession(activeSession).wireguard.rx_bytes) }}</strong></article>
+            <article><span>Transmitted</span><strong>{{ formatBytes(statusForSession(activeSession).wireguard.tx_bytes) }}</strong></article>
+            <article><span>Last handshake</span><strong>{{ formatEpoch(statusForSession(activeSession).wireguard.latest_handshake_seconds) }}</strong></article>
           </section>
         </template>
       </section>
 
       <mdui-dialog :open="dialogOpen" @closed="dialogOpen = false">
-        <div class="dialog-content">
-          <p class="eyebrow">{{ form.mode === 'create' ? 'NEW PEER SESSION' : 'UPDATE PEER SESSION' }}</p>
-          <h2>{{ form.mode === 'create' ? `Create session on ${form.node}` : `Edit AS${form.asn} on ${form.node}` }}</h2>
-          <p class="dialog-note">A session combines one WireGuard tunnel with its associated BGP configuration.</p>
-          <div class="form-section">
-            <h3>WireGuard</h3>
-            <mdui-text-field label="Public key" :value="form.publicKey" @input="form.publicKey = $event.target.value" />
-            <mdui-text-field label="Endpoint" placeholder="peer.example:22024" :value="form.endpoint" @input="form.endpoint = $event.target.value" />
+        <div class="dialog-content wizard-content">
+          <p class="eyebrow">STEP {{ wizardStep }} OF 3 · {{ form.mode === 'create' ? 'NEW PEERING' : 'EDIT PEERING' }}</p>
+          <h2>{{ form.mode === 'create' ? `Start peering on ${form.node}` : `Edit AS${form.asn} on ${form.node}` }}</h2>
+          <div class="wizard-steps" aria-label="Peering wizard steps">
+            <span :class="{ active: wizardStep >= 1 }">1. Contact</span>
+            <span :class="{ active: wizardStep >= 2 }">2. Interface</span>
+            <span :class="{ active: wizardStep >= 3 }">3. Confirm</span>
           </div>
-          <div class="form-section">
-            <h3>BGP</h3>
-            <mdui-text-field label="Description" :value="form.description" @input="form.description = $event.target.value" />
-            <mdui-select label="Transport" :value="form.transportMode" @change="form.transportMode = $event.target.value">
-              <mdui-menu-item value="ipv6_link_local">IPv6 link-local</mdui-menu-item>
-              <mdui-menu-item value="ipv4">IPv4 transport</mdui-menu-item>
-              <mdui-menu-item value="ipv6">IPv6 transport</mdui-menu-item>
-            </mdui-select>
-            <mdui-text-field label="Remote address" :value="form.remoteAddress" @input="form.remoteAddress = $event.target.value" />
-            <label class="switch-row">
-              <span>Extended next hop</span>
-              <mdui-switch :checked="form.extendedNextHop" @change="form.extendedNextHop = $event.target.checked" />
-            </label>
-          </div>
-          <mdui-text-field
-            v-if="isAdmin && form.mode === 'create'"
-            label="Peer ASN"
-            type="number"
-            :value="form.asn"
-            @input="form.asn = $event.target.value"
-          />
+
+          <template v-if="wizardStep === 1">
+            <div class="form-section">
+              <h3>Contact information</h3>
+              <p class="dialog-note">This information is stored as the peer description so the network operator can contact you about this session.</p>
+              <mdui-text-field label="Contact" placeholder="Email, Matrix ID, or other contact" :value="form.contact" @input="form.contact = $event.target.value" required />
+            </div>
+            <mdui-text-field
+              v-if="isAdmin && form.mode === 'create'"
+              label="Peer ASN"
+              type="number"
+              :value="form.asn"
+              @input="form.asn = $event.target.value"
+            />
+          </template>
+
+          <template v-else-if="wizardStep === 2">
+            <div class="form-section">
+              <h3>WireGuard</h3>
+              <mdui-text-field label="Public key" :value="form.publicKey" @input="form.publicKey = $event.target.value" />
+              <mdui-text-field label="Endpoint" placeholder="peer.example:22024" :value="form.endpoint" @input="form.endpoint = $event.target.value" />
+            </div>
+            <div class="form-section">
+              <h3>BGP transport</h3>
+              <mdui-select label="Transport" :value="form.transportMode" @change="form.transportMode = $event.target.value">
+                <mdui-menu-item value="ipv6_link_local">IPv6 link-local</mdui-menu-item>
+                <mdui-menu-item value="ipv4">IPv4 transport</mdui-menu-item>
+                <mdui-menu-item value="ipv6">IPv6 transport</mdui-menu-item>
+              </mdui-select>
+              <mdui-text-field label="Remote BGP address" :value="form.remoteAddress" @input="form.remoteAddress = $event.target.value" />
+              <label class="switch-row">
+                <span>Extended next hop</span>
+                <mdui-switch :checked="form.extendedNextHop" @change="form.extendedNextHop = $event.target.checked" />
+              </label>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="confirmation-panel">
+              <h3>Review peering request</h3>
+              <dl class="review-list">
+                <div><dt>Node</dt><dd>{{ form.node }}</dd></div>
+                <div><dt>Contact</dt><dd>{{ form.contact }}</dd></div>
+                <div><dt>WireGuard endpoint</dt><dd class="monospace">{{ form.endpoint }}</dd></div>
+                <div><dt>WireGuard public key</dt><dd class="monospace">{{ form.publicKey }}</dd></div>
+                <div><dt>BGP transport</dt><dd>{{ form.transportMode.replaceAll('_', ' ') }}</dd></div>
+                <div><dt>Remote BGP address</dt><dd class="monospace">{{ form.remoteAddress }}</dd></div>
+                <div><dt>Extended next hop</dt><dd>{{ form.extendedNextHop ? 'Enabled' : 'Disabled' }}</dd></div>
+              </dl>
+            </div>
+          </template>
         </div>
         <div slot="action" class="dialog-actions">
-          <mdui-button variant="text" @click="dialogOpen = false">Cancel</mdui-button>
-          <mdui-button variant="filled" :loading="saving" @click="saveSession">Queue session change</mdui-button>
+          <mdui-button variant="text" @click="wizardStep > 1 ? previousWizardStep() : (dialogOpen = false)">{{ wizardStep > 1 ? 'Back' : 'Cancel' }}</mdui-button>
+          <mdui-button v-if="wizardStep < 3" variant="filled" @click="nextWizardStep">Continue</mdui-button>
+          <mdui-button v-else variant="filled" :loading="saving" @click="saveSession">Confirm and queue</mdui-button>
         </div>
       </mdui-dialog>
 
