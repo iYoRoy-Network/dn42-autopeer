@@ -51,6 +51,7 @@ def test_peer_request_rejects_single_family_until_template_supports_it():
     with pytest.raises(ValidationError):
         PeerCreateRequest.model_validate(
             {
+                "contact": "operator@example.net",
                 "wireguard": {
                     "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
                     "endpoint": "example.com:22024",

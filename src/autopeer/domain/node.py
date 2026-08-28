@@ -35,6 +35,9 @@ class NodeListenPortPolicy(BaseModel):
 
 
 class NodePeeringMetadata(BaseModel):
+    display_name: str | None = None
+    subtitle: str | None = None
+    protocol_stack: Literal["ipv4", "ipv6", "dual_stack"] = "dual_stack"
     endpoint: str | None = None
     publickey: str | None = None
     listen_port_policy: NodeListenPortPolicy = Field(default_factory=NodeListenPortPolicy)
@@ -44,6 +47,12 @@ class NodePeeringMetadata(BaseModel):
     def from_yaml(cls, value: object) -> "NodePeeringMetadata":
         if not isinstance(value, dict):
             return cls()
+        display_name = value.get("display_name")
+        if display_name in ("", None):
+            display_name = None
+        subtitle = value.get("subtitle")
+        if subtitle in ("", None):
+            subtitle = None
         endpoint = value.get("endpoint")
         if endpoint in ("", None):
             endpoint = None
@@ -53,6 +62,9 @@ class NodePeeringMetadata(BaseModel):
         if public_key in ("", None):
             public_key = None
         return cls(
+            display_name=display_name,
+            subtitle=subtitle,
+            protocol_stack=value.get("protocol_stack", "dual_stack"),
             endpoint=endpoint,
             publickey=public_key,
             listen_port_policy=value.get("listen_port_policy") or {},

@@ -239,27 +239,35 @@ class BgpPatch(BaseModel):
 class PeerCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    description: str | None = None
+    contact: str
     wireguard: WireGuardCreate
     bgp: BgpCreate
 
-    @field_validator("description")
+    @field_validator("contact")
     @classmethod
-    def description_valid(cls, value: str | None) -> str | None:
-        return validate_description(value)
+    def contact_valid(cls, value: str) -> str:
+        normalized = validate_description(value.strip())
+        if not normalized:
+            raise ValueError("contact information is required")
+        return normalized
 
 
 class PeerPatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    description: str | None = None
+    contact: str | None = None
     wireguard: WireGuardPatch | None = None
     bgp: BgpPatch | None = None
 
-    @field_validator("description")
+    @field_validator("contact")
     @classmethod
-    def description_valid(cls, value: str | None) -> str | None:
-        return validate_description(value)
+    def contact_valid(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = validate_description(value.strip())
+        if not normalized:
+            raise ValueError("contact information must not be empty")
+        return normalized
 
 
 class PeerConnectionInfo(BaseModel):
