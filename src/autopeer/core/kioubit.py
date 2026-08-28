@@ -51,9 +51,7 @@ class KioubitAuthVerifier:
             raise ValueError("Kioubit public key must be an EC public key")
         self.public_key = loaded_key
 
-    def verify(
-        self, params: str, signature: str, *, now: float | None = None
-    ) -> KioubitIdentity:
+    def verify(self, params: str, signature: str, *, now: float | None = None) -> KioubitIdentity:
         try:
             encoded_signature = base64.b64decode(signature, validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -93,4 +91,6 @@ class KioubitAuthVerifier:
             raise ValueError("Kioubit response has no valid ASN") from exc
         if not 1 <= asn <= 4_294_967_295:
             raise ValueError("Kioubit ASN is outside the valid range")
-        return KioubitIdentity(asn=asn, display_name=effective_name(user_data.get("effective_name")))
+        return KioubitIdentity(
+            asn=asn, display_name=effective_name(user_data.get("effective_name"))
+        )

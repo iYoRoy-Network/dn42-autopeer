@@ -21,9 +21,7 @@ def _kioubit_verifier(settings: Settings) -> KioubitAuthVerifier:
 
 
 @router.get("/auth/callback")
-def callback(
-    request: Request, settings: Settings = Depends(get_settings)
-) -> RedirectResponse:
+def callback(request: Request, settings: Settings = Depends(get_settings)) -> RedirectResponse:
     if settings.auth_mode != "kioubit":
         raise HTTPException(status_code=404, detail="Kioubit login is disabled")
     params = request.query_params.get("params")
