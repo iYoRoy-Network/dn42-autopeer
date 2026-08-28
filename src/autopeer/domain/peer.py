@@ -13,20 +13,56 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Broader ASN values are still validated because admins and imported YAML may reference them.
 ASN_MIN = 1
 ASN_MAX = 4_294_967_295
-DN42_AUTOPEER_ASN_MIN = 4_242_420_000
-DN42_AUTOPEER_ASN_MAX = 4_242_429_999
+DN42_AUTOPEER_ASN_MIN = 4_242_420_001
+DN42_AUTOPEER_ASN_MAX = 4_242_423_999
 DESCRIPTION_MAX_LENGTH = 160
 ENDPOINT_HOST_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+class ListenPortMode(str, Enum):
+    asn_suffix = "asn_suffix"
+    range = "range"
+
+
+def listen_port_for_asn(asn: int) -> int:
+    """Use the last five ASN digits as the default DN42 port."""
+    return asn % 100_000
+
+
+def validate_listen_port(port: int) -> int:
+    if not 1 <= port <= 65_535:
+        raise ValueError("listen port must be within 1..65535")
+    return port
+
+
+def allocate_listen_port(
+    asn: int,
+    *,
+    mode: ListenPortMode = ListenPortMode.asn_suffix,
+    port_min: int | None = None,
+    port_max: int | None = None,
+    used_ports: set[int] | None = None,
+) -> int:
+    """Select a stable ASN port or the first free port in a configured pool."""
+    if mode == ListenPortMode.asn_suffix:
+        return validate_listen_port(listen_port_for_asn(asn))
+    if port_min is None or port_max is None:
+        raise ValueError("range listen-port mode requires min and max")
+    validate_listen_port(port_min)
+    validate_listen_port(port_max)
+    if port_min > port_max:
+        raise ValueError("listen-port range min must not exceed max")
+    occupied = used_ports or set()
+    for port in range(port_min, port_max + 1):
+        if port not in occupied:
+            return port
+    raise ValueError(f"no free listen port in range {port_min}-{port_max}")
 
 
 class BgpTransportMode(str, Enum):
     ipv6_link_local = "ipv6_link_local"
     ipv4 = "ipv4"
     ipv6 = "ipv6"
-
-
-def listen_port_for_asn(asn: int) -> int:
-    return 20_000 + (asn % 10_000)
 
 
 def validate_asn(asn: int) -> int:
@@ -38,7 +74,7 @@ def validate_asn(asn: int) -> int:
 def validate_dn42_autopeer_asn(asn: int) -> int:
     validate_asn(asn)
     if not (DN42_AUTOPEER_ASN_MIN <= asn <= DN42_AUTOPEER_ASN_MAX):
-        raise ValueError("MVP autopeer only accepts AS4242420000..AS4242429999")
+        raise ValueError("MVP autopeer only accepts AS4242420001..AS4242423999")
     return asn
 
 
@@ -226,6 +262,14 @@ class PeerPatchRequest(BaseModel):
         return validate_description(value)
 
 
+class PeerConnectionInfo(BaseModel):
+    wireguard_endpoint: str | None = None
+    public_key: str | None = None
+    listen_port: int
+    bgp_transport: BgpTransportMode
+    bgp_local_address: str
+
+
 class PeerResponse(BaseModel):
     node: str
     asn: int
@@ -236,6 +280,7 @@ class PeerResponse(BaseModel):
     bgp_transport: BgpTransport
     address_families: list[Literal["ipv4", "ipv6"]]
     extended_next_hop: bool
+    connection_info: PeerConnectionInfo | None = None
     managed_schema: str = "dn42-wireguard-v1"
 
 

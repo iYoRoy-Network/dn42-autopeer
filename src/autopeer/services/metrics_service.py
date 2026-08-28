@@ -13,6 +13,30 @@ class MetricsService:
         self.config = config
         self.client = client
 
+    async def online_counts_by_node(self) -> dict[str, int]:
+        targets = [target for target in self.config.targets() if target.kind == "bird"]
+        fetched = await asyncio.gather(
+            *(self.client.fetch(target) for target in targets),
+            return_exceptions=True,
+        )
+        counts: dict[str, int] = {}
+        for target, result in zip(targets, fetched, strict=False):
+            if isinstance(result, Exception):
+                continue
+            protocols: set[str] = set()
+            for sample in result:
+                labels = sample.get("labels", {})
+                protocol = labels.get("protocol") or labels.get("name") or ""
+                if not str(protocol).startswith("dn42_peer_"):
+                    continue
+                metric_name = sample.get("name", "")
+                if (metric_name.endswith("_up") or metric_name == "bird_protocol_up") and bool(
+                    sample.get("value")
+                ):
+                    protocols.add(str(protocol))
+            counts[target.node] = counts.get(target.node, 0) + len(protocols)
+        return counts
+
     async def status_for_asn(self, asn: int) -> list[PeerStatus]:
         targets = self.config.targets()
         fetched = await asyncio.gather(

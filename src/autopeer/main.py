@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     peer_service = PeerService(settings)
     job_service = JobService(store)
     metrics_service = MetricsService(
-        MetricsConfig(settings.metrics_targets_file),
+        MetricsConfig(settings.metrics_targets_file, peer_service.repo),
         MetricsClient(settings.metrics_timeout_seconds),
     )
     worker = Worker(store, peer_service)
