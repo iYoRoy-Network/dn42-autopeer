@@ -27,6 +27,7 @@ const form = reactive({
   contact: '',
   publicKey: '',
   endpoint: '',
+  mtu: 1420,
   transportMode: 'ipv6_link_local',
   remoteAddress: '',
   extendedNextHop: true,
@@ -106,6 +107,7 @@ function resetForm(session = null, node = null) {
   form.contact = peer?.description ?? ''
   form.publicKey = peer?.wireguard_public_key ?? ''
   form.endpoint = peer?.wireguard_endpoint ?? ''
+  form.mtu = peer?.mtu ?? 1420
   form.transportMode = peer?.bgp_transport?.mode ?? 'ipv6_link_local'
   form.remoteAddress = peer?.bgp_transport?.remote_address ?? ''
   form.extendedNextHop = peer?.extended_next_hop ?? true
@@ -209,6 +211,7 @@ function asRequestPayload() {
   const wireguard = {
     public_key: form.publicKey,
     endpoint: form.endpoint,
+    mtu: Number(form.mtu),
   }
   const bgp = {
     transport: {
@@ -528,14 +531,15 @@ onUnmounted(() => clearInterval(pollTimer.value))
               <dl class="details-grid">
                 <div><dt>Contact</dt><dd>{{ activeSession.peer.description }}</dd></div>
                 <div><dt>WireGuard interface</dt><dd class="monospace">dn42_{{ activeSession.peer.asn }}</dd></div>
-                <div><dt>Remote endpoint</dt><dd class="monospace">{{ activeSession.peer.wireguard_endpoint }}</dd></div>
-                <div><dt>Remote public key</dt><dd class="monospace">{{ activeSession.peer.wireguard_public_key }}</dd></div>
+                <div><dt>Peer endpoint · Your input</dt><dd class="monospace">{{ activeSession.peer.wireguard_endpoint }}</dd></div>
+                <div><dt>Peer public key · Your input</dt><dd class="monospace">{{ activeSession.peer.wireguard_public_key }}</dd></div>
+                <div><dt>Link MTU</dt><dd>{{ activeSession.peer.mtu }}</dd></div>
                 <div><dt>BGP transport</dt><dd>{{ activeSession.peer.bgp_transport.mode.replaceAll('_', ' ') }}</dd></div>
                 <div><dt>Remote BGP address</dt><dd class="monospace">{{ activeSession.peer.bgp_transport.remote_address }}</dd></div>
               </dl>
             </article>
             <article class="detail-panel">
-              <h2>Our connection information</h2>
+              <h2>Our connection information · Provided by this node</h2>
               <dl class="details-grid one-column">
                 <div><dt>WireGuard endpoint</dt><dd class="monospace">{{ activeSession.peer.connection_info?.wireguard_endpoint || 'Not configured' }}</dd></div>
                 <div><dt>WireGuard public key</dt><dd class="monospace">{{ activeSession.peer.connection_info?.public_key || 'Not configured' }}</dd></div>
@@ -584,6 +588,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
               <h3>WireGuard</h3>
               <mdui-text-field label="Public key" :value="form.publicKey" @input="form.publicKey = $event.target.value" />
               <mdui-text-field label="Endpoint" placeholder="peer.example:22024" :value="form.endpoint" @input="form.endpoint = $event.target.value" />
+              <mdui-text-field label="Link MTU" type="number" :value="form.mtu" @input="form.mtu = $event.target.value" />
             </div>
             <div class="form-section">
               <h3>BGP transport</h3>
@@ -606,12 +611,31 @@ onUnmounted(() => clearInterval(pollTimer.value))
               <dl class="review-list">
                 <div><dt>Node</dt><dd>{{ form.node }}</dd></div>
                 <div><dt>Contact</dt><dd>{{ form.contact }}</dd></div>
-                <div><dt>WireGuard endpoint</dt><dd class="monospace">{{ form.endpoint }}</dd></div>
-                <div><dt>WireGuard public key</dt><dd class="monospace">{{ form.publicKey }}</dd></div>
-                <div><dt>BGP transport</dt><dd>{{ form.transportMode.replaceAll('_', ' ') }}</dd></div>
-                <div><dt>Remote BGP address</dt><dd class="monospace">{{ form.remoteAddress }}</dd></div>
-                <div><dt>Extended next hop</dt><dd>{{ form.extendedNextHop ? 'Enabled' : 'Disabled' }}</dd></div>
               </dl>
+            </div>
+            <div class="review-columns">
+              <section class="review-side review-remote">
+                <p class="eyebrow">YOUR DATA · PROVIDE TO US</p>
+                <h4>Peer / remote side</h4>
+                <dl class="review-list">
+                  <div><dt>WireGuard endpoint</dt><dd class="monospace">{{ form.endpoint }}</dd></div>
+                  <div><dt>WireGuard public key</dt><dd class="monospace">{{ form.publicKey }}</dd></div>
+                  <div><dt>Link MTU</dt><dd>{{ form.mtu }}</dd></div>
+                  <div><dt>BGP transport</dt><dd>{{ form.transportMode.replaceAll('_', ' ') }}</dd></div>
+                  <div><dt>Remote BGP address</dt><dd class="monospace">{{ form.remoteAddress }}</dd></div>
+                  <div><dt>Extended next hop</dt><dd>{{ form.extendedNextHop ? 'Enabled' : 'Disabled' }}</dd></div>
+                </dl>
+              </section>
+              <section class="review-side review-local">
+                <p class="eyebrow">OUR DATA · USE TO CONFIGURE YOUR SIDE</p>
+                <h4>Node / local side</h4>
+                <dl class="review-list">
+                  <div><dt>WireGuard endpoint</dt><dd>{{ nodes.find((node) => node.id === form.node)?.peering?.endpoint || 'Not configured' }}</dd></div>
+                  <div><dt>WireGuard public key</dt><dd class="monospace">{{ nodes.find((node) => node.id === form.node)?.peering?.publickey || 'Not configured' }}</dd></div>
+                  <div><dt>Listen port</dt><dd>Assigned after submission</dd></div>
+                  <div><dt>BGP local address</dt><dd>Generated for selected transport</dd></div>
+                </dl>
+              </section>
             </div>
           </template>
         </div>

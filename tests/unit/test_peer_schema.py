@@ -38,6 +38,23 @@ def test_allocate_listen_port_rejects_exhausted_range():
         )
 
 
+def test_peer_request_defaults_mtu():
+    request = PeerCreateRequest.model_validate(
+        {
+            "contact": "operator@example.net",
+            "wireguard": {
+                "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "endpoint": "example.com:22024",
+            },
+            "bgp": {
+                "transport": {"mode": "ipv6_link_local", "remote_address": "fe80::1"},
+            },
+        }
+    )
+
+    assert request.wireguard.mtu == 1420
+
+
 def test_endpoint_canonicalizes_ipv6_brackets():
     assert canonical_endpoint("[2001:db8::1]:22024") == "[2001:db8::1]:22024"
 
