@@ -205,6 +205,7 @@ class ConfigRepository:
         bgp_transport: BgpTransport,
         extended_next_hop: bool,
         listen_port: int | None = None,
+        mtu: int = 1420,
     ) -> dict[str, Any]:
         """Translate the narrow public API schema into the Ansible peer schema.
 
@@ -216,6 +217,7 @@ class ConfigRepository:
             "public_key": public_key,
             "listen_port": listen_port if listen_port is not None else listen_port_for_asn(asn),
             "fwmark": "4242",
+            "mtu": mtu,
             "endpoint": endpoint,
         }
         data: dict[str, Any] = {
@@ -254,6 +256,7 @@ class ConfigRepository:
             wireguard_public_key=wg.get("public_key", ""),
             wireguard_endpoint=wg.get("endpoint"),
             listen_port=int(wg.get("listen_port") or self.allocated_listen_port(node, asn, data)),
+            mtu=int(wg.get("mtu", 1420)),
             bgp_transport=transport,
             address_families=["ipv4", "ipv6"],
             extended_next_hop=bool(bgp.get("extended_next_hop", False)),

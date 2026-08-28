@@ -146,6 +146,7 @@ class WireGuardCreate(BaseModel):
 
     public_key: str
     endpoint: str
+    mtu: int = Field(default=1420, ge=576, le=9000)
 
     @field_validator("public_key")
     @classmethod
@@ -163,6 +164,7 @@ class WireGuardPatch(BaseModel):
 
     public_key: str | None = None
     endpoint: str | None = None
+    mtu: int | None = Field(default=None, ge=576, le=9000)
 
     @field_validator("public_key")
     @classmethod
@@ -285,6 +287,7 @@ class PeerResponse(BaseModel):
     wireguard_public_key: str
     wireguard_endpoint: str | None = None
     listen_port: int
+    mtu: int
     bgp_transport: BgpTransport
     address_families: list[Literal["ipv4", "ipv6"]]
     extended_next_hop: bool

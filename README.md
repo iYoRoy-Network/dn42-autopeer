@@ -9,8 +9,8 @@ Python/FastAPI control-plane API for DN42 autopeering backed by the existing
 - Normal users may only create/update/delete `ansible/host_vars/<node>/dn42-peers/<asn>.yml`
   for their own ASN.
 - User-editable peer fields are intentionally narrow: contact information (stored as the
-  generated BIRD description), one WireGuard public key,
-  one endpoint, BGP transport address, address-family request, and extended-next-hop.
+  generated BIRD description), one WireGuard public key, one endpoint, link MTU, BGP transport
+  address, address-family request, and extended-next-hop.
 - WireGuard preshared keys are deliberately out of scope for this MVP until their lifecycle,
   encryption, and rotation policy are designed.
 - The backend writes canonical YAML, updates git, runs Ansible render/validate, and optionally

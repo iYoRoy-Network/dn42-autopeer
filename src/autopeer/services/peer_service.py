@@ -166,6 +166,7 @@ class PeerService:
                 bgp_transport=request.bgp.transport,
                 extended_next_hop=request.bgp.extended_next_hop,
                 listen_port=self.repo.allocated_listen_port(node, asn),
+                mtu=request.wireguard.mtu,
             )
 
         assert existing is not None
@@ -184,6 +185,8 @@ class PeerService:
                 and request.wireguard.endpoint is not None
             ):
                 wg["endpoint"] = request.wireguard.endpoint
+            if "mtu" in request.wireguard.model_fields_set and request.wireguard.mtu is not None:
+                wg["mtu"] = request.wireguard.mtu
         wg["listen_port"] = self.repo.allocated_listen_port(node, asn, existing)
         if request.bgp is not None:
             if request.bgp.transport is not None:
@@ -195,6 +198,7 @@ class PeerService:
                     endpoint=wg["endpoint"],
                     bgp_transport=request.bgp.transport,
                     extended_next_hop=bool(bgp.get("extended_next_hop", True)),
+                    mtu=int(wg.get("mtu", 1420)),
                 )
                 existing.pop("lla", None)
                 existing.pop("dst", None)

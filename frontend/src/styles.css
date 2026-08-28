@@ -590,6 +590,51 @@ dd {
   margin-top: 0;
 }
 
+.review-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.review-side {
+  padding: 1rem;
+  border-radius: 0.85rem;
+}
+
+.review-side h4 {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.review-remote {
+  border: 1px solid #b9d2ef;
+  background: #eef6ff;
+}
+
+.review-local {
+  border: 1px solid #b9dfc8;
+  background: #effaf2;
+}
+
+.review-list {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.review-list div {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(94, 109, 103, 0.2);
+}
+
+.review-list div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .detail-metrics {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -808,6 +853,10 @@ code {
   .peering-row {
     grid-template-columns: 1fr;
     gap: 0.75rem;
+  }
+
+  .review-columns {
+    grid-template-columns: 1fr;
   }
 
   .detail-metrics article {
