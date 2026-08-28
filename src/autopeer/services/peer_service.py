@@ -13,7 +13,6 @@ from autopeer.domain.peer import (
     PeerCreateRequest,
     PeerPatchRequest,
     PeerResponse,
-    listen_port_for_asn,
     validate_dn42_autopeer_asn,
 )
 
@@ -39,6 +38,10 @@ class PeerService:
     def list_nodes(self):
         self.repo.ensure_exists()
         return self.repo.list_nodes()
+
+    def list_node_ids(self) -> list[str]:
+        self.repo.ensure_exists()
+        return self.repo.list_inventory_nodes()
 
     def list_peers_for_principal(self, node: str, principal: Principal) -> list[PeerResponse]:
         self.repo.require_node(node)
@@ -122,7 +125,7 @@ class PeerService:
                 self.ansible.deploy_host(node, apply_wireguard=True, apply_bird=True)
                 deploy_result = "host"
 
-        return {
+        result = {
             "operation": operation,
             "node": node,
             "asn": asn,
@@ -130,6 +133,13 @@ class PeerService:
             "deploy": deploy_result,
             "state": target_state,
         }
+        if target_state == "present":
+            result["peer"] = self.repo.peer_to_response(
+                node,
+                asn,
+                self.repo.read_peer(node, asn) or {},
+            ).model_dump(mode="json")
+        return result
 
     def _request_from_payload(
         self, operation: str, data: dict[str, Any]
@@ -155,6 +165,7 @@ class PeerService:
                 endpoint=request.wireguard.endpoint,
                 bgp_transport=request.bgp.transport,
                 extended_next_hop=request.bgp.extended_next_hop,
+                listen_port=self.repo.allocated_listen_port(node, asn),
             )
 
         assert existing is not None
@@ -173,7 +184,7 @@ class PeerService:
                 and request.wireguard.endpoint is not None
             ):
                 wg["endpoint"] = request.wireguard.endpoint
-        wg["listen_port"] = listen_port_for_asn(asn)
+        wg["listen_port"] = self.repo.allocated_listen_port(node, asn, existing)
         if request.bgp is not None:
             if request.bgp.transport is not None:
                 rebuilt = self.repo.build_peer_yaml(

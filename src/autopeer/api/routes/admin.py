@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from autopeer.api.deps import get_current_principal, get_job_service, get_peer_service
+from autopeer.api.deps import (
+    get_current_principal,
+    get_job_service,
+    get_metrics_service,
+    get_peer_service,
+)
 from autopeer.core.security import Principal
 from autopeer.domain.peer import PeerCreateRequest, PeerPatchRequest
 from autopeer.services.job_service import JobService
+from autopeer.services.metrics_service import MetricsService
 from autopeer.services.peer_service import PeerService
 
 router = APIRouter()
@@ -17,12 +23,17 @@ def require_admin(principal: Principal) -> None:
 
 
 @router.get("/admin/nodes")
-def list_admin_nodes(
+async def list_admin_nodes(
     principal: Principal = Depends(get_current_principal),
     peer_service: PeerService = Depends(get_peer_service),
+    metrics: MetricsService = Depends(get_metrics_service),
 ):
     require_admin(principal)
-    return peer_service.list_nodes()
+    online_counts = await metrics.online_counts_by_node()
+    return [
+        node.model_copy(update={"online_peer_count": online_counts.get(node.id)})
+        for node in peer_service.list_nodes()
+    ]
 
 
 @router.get("/admin/nodes/{node}/peers")

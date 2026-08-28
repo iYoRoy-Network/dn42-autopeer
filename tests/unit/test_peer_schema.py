@@ -1,11 +1,41 @@
 import pytest
 from pydantic import ValidationError
 
-from autopeer.domain.peer import PeerCreateRequest, canonical_endpoint, listen_port_for_asn
+from autopeer.domain.peer import (
+    ListenPortMode,
+    PeerCreateRequest,
+    allocate_listen_port,
+    canonical_endpoint,
+    listen_port_for_asn,
+)
 
 
 def test_listen_port_matches_dn42_asn_tail():
     assert listen_port_for_asn(4242423128) == 23128
+
+
+def test_allocate_listen_port_selects_first_free_port():
+    assert (
+        allocate_listen_port(
+            4242423128,
+            mode=ListenPortMode.range,
+            port_min=52000,
+            port_max=52002,
+            used_ports={52000, 52002},
+        )
+        == 52001
+    )
+
+
+def test_allocate_listen_port_rejects_exhausted_range():
+    with pytest.raises(ValueError, match="no free listen port"):
+        allocate_listen_port(
+            4242423128,
+            mode=ListenPortMode.range,
+            port_min=52000,
+            port_max=52000,
+            used_ports={52000},
+        )
 
 
 def test_endpoint_canonicalizes_ipv6_brackets():

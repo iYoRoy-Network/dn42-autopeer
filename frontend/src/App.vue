@@ -38,6 +38,10 @@ const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const statusByNode = computed(() => new Map(statuses.value.map((status) => [status.node, status])))
 const sessionCount = computed(() => sessions.value.length)
 
+function sessionsForNode(nodeId) {
+  return sessions.value.filter((session) => session.node.id === nodeId)
+}
+
 function statusForSession(session) {
   if (!currentUser.value || Number(session.peer.asn) !== Number(currentUser.value.asn)) return null
   return statusByNode.value.get(session.node.id) ?? null
@@ -361,7 +365,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
             <div>
               <p class="eyebrow">AVAILABLE LOCATIONS</p>
               <h1>All nodes</h1>
-              <p>Choose a node to create a new peer session or manage your existing session there.</p>
+              <p>Choose a node to create a new peer session or manage your sessions on that node.</p>
             </div>
           </section>
 
@@ -377,17 +381,28 @@ onUnmounted(() => clearInterval(pollTimer.value))
                 </span>
               </div>
               <dl class="node-details">
-                <div><dt>Region</dt><dd>{{ node.region ?? '—' }}</dd></div>
-                <div><dt>Country</dt><dd>{{ node.country ?? '—' }}</dd></div>
-                <div><dt>BIRD deploy</dt><dd>{{ node.deploy_bird_enabled ? 'Enabled' : 'Disabled' }}</dd></div>
-                <div><dt>WireGuard deploy</dt><dd>{{ node.deploy_wireguard_enabled ? 'Enabled' : 'Disabled' }}</dd></div>
+                <div><dt>Configured peers</dt><dd>{{ node.peer_count }}</dd></div>
+                <div><dt>Online peers</dt><dd>{{ node.online_peer_count ?? '—' }}</dd></div>
+                <div><dt>WireGuard endpoint</dt><dd>{{ node.peering.endpoint || 'Not configured' }}</dd></div>
+                <div><dt>WireGuard public key</dt><dd class="monospace">{{ node.peering.publickey || 'Not configured' }}</dd></div>
+                <div>
+                  <dt>Listen port policy</dt>
+                  <dd>
+                    {{
+                      node.peering.listen_port_policy.mode === 'range'
+                        ? `${node.peering.listen_port_policy.port_min}–${node.peering.listen_port_policy.port_max}`
+                        : 'ASN suffix'
+                    }}
+                  </dd>
+                </div>
+                <div><dt>My sessions</dt><dd>{{ sessionsForNode(node.id).length }}</dd></div>
               </dl>
               <mdui-divider />
               <div class="node-actions">
-                <template v-if="sessions.find((session) => session.node.id === node.id)">
-                  <span class="configured-label">Session configured</span>
-                  <mdui-button variant="outlined" @click="openSession(sessions.find((session) => session.node.id === node.id))">
-                    View session
+                <template v-if="sessionsForNode(node.id).length">
+                  <span class="configured-label">{{ sessionsForNode(node.id).length }} session{{ sessionsForNode(node.id).length > 1 ? 's' : '' }} configured</span>
+                  <mdui-button variant="outlined" @click="openSession(sessionsForNode(node.id)[0])">
+                    View session{{ sessionsForNode(node.id).length > 1 ? 's' : '' }}
                   </mdui-button>
                 </template>
                 <template v-else>
@@ -450,6 +465,25 @@ onUnmounted(() => clearInterval(pollTimer.value))
                     <div><dt>Remote address</dt><dd class="monospace">{{ session.peer.bgp_transport.remote_address }}</dd></div>
                     <div><dt>Address families</dt><dd>{{ session.peer.address_families.join(' + ') }}</dd></div>
                     <div><dt>Extended next hop</dt><dd>{{ session.peer.extended_next_hop ? 'Enabled' : 'Disabled' }}</dd></div>
+                  </dl>
+                </section>
+
+                <section v-if="session.peer.connection_info" class="config-block">
+                  <p class="eyebrow">GENERATED CONNECTION INFO</p>
+                  <h3>Control-plane response</h3>
+                  <dl class="details-grid one-column">
+                    <div>
+                      <dt>WireGuard endpoint</dt>
+                      <dd>{{ session.peer.connection_info.wireguard_endpoint || 'Not configured' }}</dd>
+                    </div>
+                    <div>
+                      <dt>WireGuard public key</dt>
+                      <dd class="monospace">{{ session.peer.connection_info.public_key || 'Not configured' }}</dd>
+                    </div>
+                    <div>
+                      <dt>BGP local address</dt>
+                      <dd class="monospace">{{ session.peer.connection_info.bgp_local_address }}</dd>
+                    </div>
                   </dl>
                 </section>
               </div>

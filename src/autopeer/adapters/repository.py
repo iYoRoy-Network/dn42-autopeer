@@ -6,11 +6,14 @@ from typing import Any
 
 import yaml
 
-from autopeer.domain.node import NodeSummary
+from autopeer.domain.node import NodePeeringMetadata, NodeSummary
 from autopeer.domain.peer import (
     BgpTransport,
     BgpTransportMode,
+    ListenPortMode,
+    PeerConnectionInfo,
     PeerResponse,
+    allocate_listen_port,
     listen_port_for_asn,
 )
 
@@ -66,24 +69,47 @@ class ConfigRepository:
         nodes: list[NodeSummary] = []
         for node in self.list_inventory_nodes():
             node_vars = load_yaml(self.node_dir(node) / "main.yml")
-            dn42_vars = load_yaml(self.node_dir(node) / "bird-dn42.yml").get("dn42") or {}
             meta = node_vars.get("node") or {}
-            deploy = node_vars.get("deploy") or {}
             peering = meta.get("peering") or {}
             nodes.append(
                 NodeSummary(
                     id=node,
                     name=meta.get("name", node),
-                    region=dn42_vars.get("region"),
-                    country=dn42_vars.get("country"),
                     peering_enabled=bool(peering.get("enabled", True)),
-                    deploy_bird_enabled=bool((deploy.get("bird") or {}).get("enabled", True)),
-                    deploy_wireguard_enabled=bool(
-                        (deploy.get("wireguard") or {}).get("enabled", False)
-                    ),
+                    peer_count=len(self.list_peer_asns(node)),
+                    peering=NodePeeringMetadata.from_yaml(peering),
                 )
             )
         return nodes
+
+    def node_metadata(self, node: str) -> NodePeeringMetadata:
+        self.require_node(node)
+        return next(item.peering for item in self.list_nodes() if item.id == node)
+
+    def allocated_listen_port(
+        self,
+        node: str,
+        asn: int,
+        existing: dict[str, Any] | None = None,
+    ) -> int:
+        current = ((existing or {}).get("wireguard") or {}).get("listen_port")
+        if current is not None:
+            return int(current)
+        metadata = self.node_metadata(node)
+        policy = metadata.listen_port_policy
+        used: set[int] = set()
+        for peer_asn in self.list_peer_asns(node):
+            peer = self.read_peer(node, peer_asn) or {}
+            port = (peer.get("wireguard") or {}).get("listen_port")
+            if port is not None:
+                used.add(int(port))
+        return allocate_listen_port(
+            asn,
+            mode=ListenPortMode(policy.mode),
+            port_min=policy.port_min,
+            port_max=policy.port_max,
+            used_ports=used,
+        )
 
     def require_node(self, node: str) -> None:
         if node not in set(self.list_inventory_nodes()):
@@ -143,6 +169,25 @@ class ConfigRepository:
             return dn42.get("own_ipv6")
         return None
 
+    def connection_info(self, node: str, asn: int, transport: BgpTransport) -> dict[str, Any]:
+        metadata = self.node_metadata(node)
+        port = self.allocated_listen_port(node, asn)
+        if transport.mode == BgpTransportMode.ipv6_link_local:
+            local_address = "fe80::2024"
+        else:
+            local_address = self.node_dn42_source(node, transport.mode)
+            if not local_address:
+                raise ValueError(f"node {node} has no source address for {transport.mode}")
+            local_address = ipaddress.ip_address(local_address).compressed
+        endpoint = f"{metadata.endpoint}:{port}" if metadata.endpoint else None
+        return {
+            "wireguard_endpoint": endpoint,
+            "public_key": metadata.publickey,
+            "listen_port": port,
+            "bgp_transport": transport.mode,
+            "bgp_local_address": local_address,
+        }
+
     def build_peer_yaml(
         self,
         *,
@@ -153,6 +198,7 @@ class ConfigRepository:
         endpoint: str,
         bgp_transport: BgpTransport,
         extended_next_hop: bool,
+        listen_port: int | None = None,
     ) -> dict[str, Any]:
         """Translate the narrow public API schema into the Ansible peer schema.
 
@@ -162,7 +208,7 @@ class ConfigRepository:
         """
         wireguard: dict[str, Any] = {
             "public_key": public_key,
-            "listen_port": listen_port_for_asn(asn),
+            "listen_port": listen_port if listen_port is not None else listen_port_for_asn(asn),
             "fwmark": "4242",
             "endpoint": endpoint,
         }
@@ -205,6 +251,9 @@ class ConfigRepository:
             bgp_transport=transport,
             address_families=["ipv4", "ipv6"],
             extended_next_hop=bool(bgp.get("extended_next_hop", False)),
+            connection_info=PeerConnectionInfo.model_validate(
+                self.connection_info(node, asn, transport)
+            ),
         )
 
     def _validate_node_id(self, node: str) -> None:

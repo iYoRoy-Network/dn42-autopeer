@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import yaml
 from prometheus_client.parser import text_string_to_metric_families
+
+if TYPE_CHECKING:
+    from autopeer.adapters.repository import ConfigRepository
 
 
 @dataclass(frozen=True)
@@ -17,15 +20,25 @@ class MetricsTarget:
 
 
 class MetricsConfig:
-    def __init__(self, path: Path | None):
+    def __init__(self, path: Path | None, repository: "ConfigRepository" | None = None):
         self.path = path
+        self.repository = repository
 
     def targets(self) -> list[MetricsTarget]:
-        if self.path is None or not self.path.exists():
-            return []
-        data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+        data = {}
+        if self.path is not None and self.path.exists():
+            data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+        if self.repository is not None:
+            for node in self.repository.list_nodes():
+                if node.peering.exporters:
+                    data.setdefault("nodes", {}).setdefault(node.id, {}).update(
+                        node.peering.exporters
+                    )
         result: list[MetricsTarget] = []
         for node, mapping in (data.get("nodes") or {}).items():
+            if isinstance(mapping, str):
+                result.append(MetricsTarget(node=node, kind="default", url=mapping))
+                continue
             for kind, url in (mapping or {}).items():
                 if url:
                     result.append(MetricsTarget(node=node, kind=kind, url=str(url)))
