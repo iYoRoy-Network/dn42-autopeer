@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
     app.state.job_service = job_service
     app.state.metrics_service = metrics_service
     app.state.worker = worker
+    await metrics_service.refresh_once()
     metrics_service.start()
     worker.start()
     try:
