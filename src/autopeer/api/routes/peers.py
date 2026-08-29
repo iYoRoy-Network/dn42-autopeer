@@ -23,9 +23,15 @@ async def list_nodes(
     peer_service: PeerService = Depends(get_peer_service),
     metrics: MetricsService = Depends(get_metrics_service),
 ):
-    online_counts = await metrics.online_counts_by_node()
+    online_counts = metrics.online_counts_by_node()
+    runtime_metrics = metrics.node_metrics_by_node()
     return [
-        node.model_copy(update={"online_peer_count": online_counts.get(node.id)})
+        node.model_copy(
+            update={
+                "online_peer_count": online_counts.get(node.id),
+                "runtime_metrics": runtime_metrics.get(node.id),
+            }
+        )
         for node in peer_service.list_nodes()
         if node.peering_enabled
     ]

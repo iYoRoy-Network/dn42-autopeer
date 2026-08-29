@@ -65,6 +65,8 @@ class Settings(BaseSettings):
 
     metrics_targets_file: Path | None = None
     metrics_timeout_seconds: float = 5.0
+    metrics_refresh_seconds: float = Field(default=30.0, gt=0)
+    metrics_max_concurrency: int = Field(default=4, ge=1, le=32)
 
     @field_validator("admin_asns", mode="before")
     @classmethod
