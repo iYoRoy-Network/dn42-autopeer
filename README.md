@@ -15,8 +15,9 @@ Python/FastAPI control-plane API for DN42 autopeering backed by the existing
   encryption, and rotation policy are designed.
 - The backend writes canonical YAML, updates git, runs Ansible render/validate, and optionally
   deploys through the playbooks stored in the Bird2-Configuration repo.
-- Metrics are fetched directly from exporter `/metrics` endpoints and parsed with
-  `prometheus-client`; Prometheus is not required for the MVP.
+- Metrics are fetched periodically by a bounded background collector, kept in process memory, and
+  parsed from exporter `/metrics` endpoints with `prometheus-client`; Prometheus is not required for
+  the MVP.
 
 ## Current important limitations
 

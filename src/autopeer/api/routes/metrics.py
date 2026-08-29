@@ -10,8 +10,8 @@ router = APIRouter()
 
 
 @router.get("/me/peers/status")
-async def my_peer_status(
+def my_peer_status(
     principal: Principal = Depends(get_current_principal),
     metrics: MetricsService = Depends(get_metrics_service),
 ):
-    return await metrics.status_for_asn(principal.asn)
+    return metrics.status_for_asn(principal.asn)

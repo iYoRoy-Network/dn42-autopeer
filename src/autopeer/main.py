@@ -32,6 +32,8 @@ async def lifespan(app: FastAPI):
     metrics_service = MetricsService(
         MetricsConfig(settings.metrics_targets_file, peer_service.repo),
         MetricsClient(settings.metrics_timeout_seconds),
+        refresh_seconds=settings.metrics_refresh_seconds,
+        max_concurrency=settings.metrics_max_concurrency,
     )
     worker = Worker(store, peer_service)
 
@@ -40,11 +42,13 @@ async def lifespan(app: FastAPI):
     app.state.job_service = job_service
     app.state.metrics_service = metrics_service
     app.state.worker = worker
+    metrics_service.start()
     worker.start()
     try:
         yield
     finally:
         worker.stop()
+        await metrics_service.stop()
 
 
 def create_app() -> FastAPI:

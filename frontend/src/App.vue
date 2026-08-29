@@ -66,7 +66,14 @@ const totalExportedRoutes = computed(() =>
     0,
   ),
 )
-
+const totalNodeReceived = (node) => node.runtime_metrics?.rx_bytes
+const totalNodeTransmitted = (node) => node.runtime_metrics?.tx_bytes
+const currentNodeReceiveRate = (node) => node.runtime_metrics?.rx_bytes_per_second
+const currentNodeTransmitRate = (node) => node.runtime_metrics?.tx_bytes_per_second
+function formatRate(value) {
+  if (value === undefined || value === null || !Number.isFinite(Number(value))) return '—'
+  return `${formatBytes(value)}/s`
+}
 function sessionsForNode(nodeId) {
   return sessions.value.filter((session) => session.node.id === nodeId)
 }
@@ -97,6 +104,19 @@ function formatEpoch(value) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
     new Date(milliseconds),
   )
+}
+
+function formatHandshake(status) {
+  const age = status?.wireguard?.latest_handshake_age_seconds
+  if (age !== undefined && age !== null) {
+    const numeric = Number(age)
+    if (!Number.isFinite(numeric)) return '—'
+    if (numeric < 60) return `${Math.round(numeric)} seconds ago`
+    if (numeric < 3600) return `${Math.round(numeric / 60)} minutes ago`
+    if (numeric < 86400) return `${Math.round(numeric / 3600)} hours ago`
+    return `${Math.round(numeric / 86400)} days ago`
+  }
+  return formatEpoch(status?.wireguard?.latest_handshake_seconds)
 }
 
 function resetForm(session = null, node = null) {
@@ -439,6 +459,11 @@ onUnmounted(() => clearInterval(pollTimer.value))
                   {{ node.peering.protocol_stack === 'ipv4' ? 'IPv4 only' : node.peering.protocol_stack === 'ipv6' ? 'IPv6 only' : 'Dual stack' }}
                 </span>
               </div>
+              <div class="node-metrics">
+                <div><span>Peers</span><strong>{{ node.peer_count }} total · {{ node.online_peer_count ?? '—' }} online</strong></div>
+                <div><span>Traffic</span><strong>↓ {{ formatBytes(totalNodeReceived(node)) }} · ↑ {{ formatBytes(totalNodeTransmitted(node)) }}</strong></div>
+                <div><span>Current bandwidth</span><strong>↓ {{ formatRate(currentNodeReceiveRate(node)) }} · ↑ {{ formatRate(currentNodeTransmitRate(node)) }}</strong></div>
+              </div>
               <div class="node-actions">
                 <mdui-button
                   v-if="sessionsForNode(node.id).length"
@@ -553,7 +578,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
             <article><span>Exported routes</span><strong>{{ statusForSession(activeSession).bgp.routes_exported ?? '—' }}</strong></article>
             <article><span>Received</span><strong>{{ formatBytes(statusForSession(activeSession).wireguard.rx_bytes) }}</strong></article>
             <article><span>Transmitted</span><strong>{{ formatBytes(statusForSession(activeSession).wireguard.tx_bytes) }}</strong></article>
-            <article><span>Last handshake</span><strong>{{ formatEpoch(statusForSession(activeSession).wireguard.latest_handshake_seconds) }}</strong></article>
+            <article><span>Last handshake</span><strong>{{ formatHandshake(statusForSession(activeSession)) }}</strong></article>
           </section>
         </template>
       </section>

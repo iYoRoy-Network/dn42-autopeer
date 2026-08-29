@@ -76,10 +76,19 @@ class NodePeeringMetadata(BaseModel):
         )
 
 
+class NodeRuntimeMetrics(BaseModel):
+    rx_bytes: float | None = None
+    tx_bytes: float | None = None
+    rx_bytes_per_second: float | None = None
+    tx_bytes_per_second: float | None = None
+    collected_at: float | None = None
+
+
 class NodeSummary(BaseModel):
     id: str
     name: str
     peering_enabled: bool = False
     peer_count: int = 0
     online_peer_count: int | None = None
+    runtime_metrics: NodeRuntimeMetrics | None = None
     peering: NodePeeringMetadata = Field(default_factory=NodePeeringMetadata)

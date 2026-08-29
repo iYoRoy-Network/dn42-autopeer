@@ -271,7 +271,7 @@ dt {
 
 .node-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -300,6 +300,38 @@ dt {
 .node-subtitle {
   margin: 0.35rem 0 0;
   color: var(--muted);
+}
+
+.node-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.node-metrics div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-soft);
+}
+
+.node-metrics span,
+.node-metrics strong {
+  display: block;
+}
+
+.node-metrics span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.node-metrics strong {
+  margin-top: 0.3rem;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .stack-pill,
@@ -843,6 +875,8 @@ code {
   .session-config,
   .metric-pair,
   .node-details,
+  .node-grid,
+  .node-metrics,
   .details-grid,
   .detail-grid,
   .summary-grid,
