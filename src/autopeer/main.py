@@ -10,6 +10,7 @@ from autopeer.api.router import router
 from autopeer.core.config import get_settings
 from autopeer.core.logging import configure_logging
 from autopeer.db.session import JobStore
+from autopeer.services.config_cache_service import ConfigCacheService
 from autopeer.services.job_service import JobService
 from autopeer.services.metrics_service import MetricsService
 from autopeer.services.peer_service import PeerService
@@ -28,6 +29,9 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
     store = JobStore(settings.database_path)
     peer_service = PeerService(settings)
+    config_cache = ConfigCacheService(
+        peer_service.repo, refresh_seconds=settings.config_refresh_seconds
+    )
     job_service = JobService(store)
     metrics_service = MetricsService(
         MetricsConfig(settings.metrics_targets_file, peer_service.repo),
@@ -39,9 +43,12 @@ async def lifespan(app: FastAPI):
 
     app.state.settings = settings
     app.state.peer_service = peer_service
+    app.state.config_cache = config_cache
     app.state.job_service = job_service
     app.state.metrics_service = metrics_service
     app.state.worker = worker
+    await config_cache.refresh_once()
+    config_cache.start()
     await metrics_service.refresh_once()
     metrics_service.start()
     worker.start()
@@ -49,6 +56,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         worker.stop()
+        await config_cache.stop()
         await metrics_service.stop()
 
 
