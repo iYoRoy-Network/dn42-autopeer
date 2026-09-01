@@ -8,6 +8,8 @@ import yaml
 
 from autopeer.domain.node import NodePeeringMetadata, NodeSummary
 from autopeer.domain.peer import (
+    BgpCreate,
+    BgpSessionMode,
     BgpTransport,
     BgpTransportMode,
     ListenPortMode,
@@ -194,6 +196,52 @@ class ConfigRepository:
             "bgp_local_address": local_address,
         }
 
+    def _bgp_sessions(self, node: str, asn: int, bgp: BgpCreate) -> list[dict[str, Any]]:
+        if bgp.mp_bgp:
+            address = (
+                bgp.ipv6_link_local_address if bgp.ipv6_mode == "link_local" else bgp.ipv6_address
+            )
+            transport = (
+                BgpTransportMode.ipv6_link_local
+                if bgp.ipv6_mode == "link_local"
+                else BgpTransportMode.ipv6
+            )
+            return [
+                {
+                    "name": "mp-bgp",
+                    "transport": transport,
+                    "remote_address": address,
+                    "interface": f"dn42_{asn}",
+                }
+            ]
+        sessions: list[dict[str, Any]] = []
+        if bgp.ipv4_enabled:
+            sessions.append(
+                {
+                    "name": "ipv4",
+                    "transport": BgpTransportMode.ipv4,
+                    "remote_address": bgp.ipv4_address,
+                }
+            )
+        if bgp.ipv6_enabled:
+            transport = (
+                BgpTransportMode.ipv6_link_local
+                if bgp.ipv6_mode == "link_local"
+                else BgpTransportMode.ipv6
+            )
+            address = (
+                bgp.ipv6_link_local_address if bgp.ipv6_mode == "link_local" else bgp.ipv6_address
+            )
+            sessions.append(
+                {
+                    "name": "ipv6",
+                    "transport": transport,
+                    "remote_address": address,
+                    "interface": f"dn42_{asn}",
+                }
+            )
+        return sessions
+
     def build_peer_yaml(
         self,
         *,
@@ -202,17 +250,11 @@ class ConfigRepository:
         description: str | None,
         public_key: str,
         endpoint: str,
-        bgp_transport: BgpTransport,
-        extended_next_hop: bool,
+        bgp: BgpCreate,
         listen_port: int | None = None,
         mtu: int = 1420,
     ) -> dict[str, Any]:
-        """Translate the narrow public API schema into the Ansible peer schema.
-
-        User-provided values are limited to contact information, WireGuard
-        endpoint/key, BGP transport, and extended-next-hop. Operational fields
-        such as listen_port, fwmark, src/dst, or lla are derived here.
-        """
+        """Translate the public peer request into explicit BIRD sessions."""
         wireguard: dict[str, Any] = {
             "public_key": public_key,
             "listen_port": listen_port if listen_port is not None else listen_port_for_asn(asn),
@@ -220,35 +262,115 @@ class ConfigRepository:
             "mtu": mtu,
             "endpoint": endpoint,
         }
-        data: dict[str, Any] = {
+        sessions = self._bgp_sessions(node, asn, bgp.normalized())
+        serialized_sessions: list[dict[str, Any]] = []
+        for session in sessions:
+            item = {
+                "name": session["name"],
+                "address_families": ["ipv4", "ipv6"] if bgp.mp_bgp else [session["name"]],
+                "extended_next_hop": bgp.mp_bgp,
+                "neighbor": session["remote_address"],
+                "transport": session["transport"],
+            }
+            if session.get("interface"):
+                item["interface"] = session["interface"]
+            transport = session["transport"]
+            if transport != BgpTransportMode.ipv6_link_local:
+                source = self.node_dn42_source(node, transport)
+                if not source:
+                    raise ValueError(f"node {node} has no source address for {transport}")
+                item["source"] = ipaddress.ip_address(source).compressed
+            serialized_sessions.append(item)
+        result: dict[str, Any] = {
             "description": description or f"AS{asn}",
             "asn": asn,
             "wireguard": wireguard,
+            "bgp": {
+                "mode": "mp_bgp" if bgp.mp_bgp else "independent",
+                "sessions": serialized_sessions,
+                "extended_next_hop": bgp.mp_bgp,
+            },
         }
-        if bgp_transport.mode == BgpTransportMode.ipv6_link_local:
-            data["lla"] = bgp_transport.remote_address
-        else:
-            src = self.node_dn42_source(node, bgp_transport.mode)
-            if not src:
-                raise ValueError(f"node {node} has no source address for {bgp_transport.mode}")
-            data["dst"] = bgp_transport.remote_address
-            data["src"] = ipaddress.ip_address(src).compressed
-        data["bgp"] = {"extended_next_hop": extended_next_hop}
-        return data
+        # Keep the legacy top-level transport fields for WireGuard route hooks
+        # and older renderers while the BIRD source uses explicit sessions.
+        for session in serialized_sessions:
+            if session["transport"] == BgpTransportMode.ipv6_link_local:
+                result["lla"] = session["neighbor"]
+            elif "dst" not in result:
+                result["dst"] = session["neighbor"]
+                result["src"] = session["source"]
+        return result
 
     def peer_to_response(self, node: str, asn: int, data: dict[str, Any]) -> PeerResponse:
         wg = data.get("wireguard") or {}
         bgp = data.get("bgp") or {}
-        if data.get("lla"):
-            transport = BgpTransport(
-                mode=BgpTransportMode.ipv6_link_local, remote_address=data["lla"]
+        raw_sessions = bgp.get("sessions") or []
+        if raw_sessions:
+            first = raw_sessions[0]
+            transport_mode = BgpTransportMode(first.get("transport", "ipv6_link_local"))
+            remote_address = first.get("neighbor", "fe80::")
+            if bgp.get("mode") == "mp_bgp":
+                session_mode = (
+                    BgpSessionMode.mp_bgp_ipv6_link_local
+                    if transport_mode == BgpTransportMode.ipv6_link_local
+                    else BgpSessionMode.mp_bgp_ipv6_global
+                )
+            elif len(raw_sessions) == 2:
+                session_mode = (
+                    BgpSessionMode.dual_ipv6_link_local
+                    if transport_mode == BgpTransportMode.ipv6_link_local
+                    else BgpSessionMode.dual_ipv6_global
+                )
+            else:
+                session_mode = (
+                    BgpSessionMode.ipv4
+                    if transport_mode == BgpTransportMode.ipv4
+                    else BgpSessionMode.ipv6
+                )
+            families = raw_sessions[0].get("address_families", ["ipv4", "ipv6"])
+        elif data.get("lla"):
+            transport_mode = BgpTransportMode.ipv6_link_local
+            remote_address = data["lla"]
+            session_mode = (
+                BgpSessionMode.mp_bgp_ipv6_link_local
+                if bgp.get("extended_next_hop")
+                else BgpSessionMode.ipv6
             )
+            families = ["ipv4", "ipv6"] if bgp.get("extended_next_hop") else ["ipv6"]
         elif data.get("dst"):
-            ip = ipaddress.ip_address(data["dst"])
-            mode = BgpTransportMode.ipv4 if ip.version == 4 else BgpTransportMode.ipv6
-            transport = BgpTransport(mode=mode, remote_address=data["dst"])
+            remote_address = data["dst"]
+            transport_mode = (
+                BgpTransportMode.ipv4
+                if ipaddress.ip_address(remote_address).version == 4
+                else BgpTransportMode.ipv6
+            )
+            session_mode = (
+                BgpSessionMode.ipv4
+                if transport_mode == BgpTransportMode.ipv4
+                else BgpSessionMode.ipv6
+            )
+            families = ["ipv4"] if transport_mode == BgpTransportMode.ipv4 else ["ipv6"]
         else:
-            transport = BgpTransport(mode=BgpTransportMode.ipv6_link_local, remote_address="fe80::")
+            transport_mode = BgpTransportMode.ipv6_link_local
+            remote_address = "fe80::"
+            session_mode = BgpSessionMode.ipv6
+            families = ["ipv6"]
+        transport = BgpTransport(mode=transport_mode, remote_address=remote_address)
+        response_bgp = dict(bgp)
+        response_bgp["mp_bgp"] = bool(bgp.get("mode") == "mp_bgp")
+        response_bgp["ipv4_enabled"] = response_bgp["mp_bgp"] or "ipv4" in families
+        response_bgp["ipv6_enabled"] = "ipv6" in families
+        for session in raw_sessions:
+            if session.get("name") == "ipv4":
+                response_bgp["ipv4_address"] = session.get("neighbor")
+            elif session.get("name") in {"ipv6", "mp-bgp"}:
+                if session.get("transport") == BgpTransportMode.ipv6_link_local.value:
+                    response_bgp["ipv6_mode"] = "link_local"
+                    response_bgp["ipv6_link_local_address"] = session.get("neighbor")
+                    response_bgp["ipv6_link_local_interface"] = session.get("interface")
+                else:
+                    response_bgp["ipv6_mode"] = "global"
+                    response_bgp["ipv6_address"] = session.get("neighbor")
         return PeerResponse(
             node=node,
             asn=asn,
@@ -258,8 +380,10 @@ class ConfigRepository:
             listen_port=int(wg.get("listen_port") or self.allocated_listen_port(node, asn, data)),
             mtu=int(wg.get("mtu", 1420)),
             bgp_transport=transport,
-            address_families=["ipv4", "ipv6"],
+            address_families=families,
             extended_next_hop=bool(bgp.get("extended_next_hop", False)),
+            session_mode=session_mode,
+            bgp=response_bgp,
             connection_info=PeerConnectionInfo.model_validate(
                 self.connection_info(node, asn, transport, data)
             ),
