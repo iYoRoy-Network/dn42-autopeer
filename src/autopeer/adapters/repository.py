@@ -47,10 +47,59 @@ class ConfigRepository:
     def __init__(self, root: Path):
         self.root = root
         self.ansible_dir = self.root / "ansible"
+        self._inventory_nodes: list[str] = []
+        self._node_summaries: dict[str, NodeSummary] = {}
+        self._peer_records: dict[str, dict[int, dict[str, Any]]] = {}
+        self._dn42_sources: dict[str, dict[str, str]] = {}
+        self._snapshot_ready = False
+
+    def refresh_snapshot(self) -> None:
+        self.ensure_exists()
+        inventory = load_yaml(self.ansible_dir / "inventory.yml")
+        hosts = ((inventory.get("bird_nodes") or {}).get("hosts")) or {}
+        inventory_nodes = sorted(hosts)
+        peer_records = {}
+        summaries = {}
+        sources = {}
+        for node in inventory_nodes:
+            node_vars = load_yaml(self.node_dir(node) / "main.yml")
+            meta = node_vars.get("node") or {}
+            peering = meta.get("peering") or {}
+            records = {}
+            directory = self.peer_dir(node)
+            for path in (
+                sorted(directory.glob("*.yml"), key=lambda item: item.name)
+                if directory.exists()
+                else []
+            ):
+                asn = int(path.stem)
+                data = load_yaml(path)
+                if data.get("asn") != asn:
+                    raise ValueError(f"peer file {path} has mismatched ASN {data.get('asn')}")
+                records[asn] = data
+            peer_records[node] = records
+            summaries[node] = NodeSummary(
+                id=node,
+                name=meta.get("name", node),
+                peering_enabled=bool(peering.get("enabled", True)),
+                peer_count=len(records),
+                peering=NodePeeringMetadata.from_yaml(peering),
+            )
+            dn42 = load_yaml(self.node_dir(node) / "bird-dn42.yml").get("dn42") or {}
+            sources[node] = {"ipv4": dn42.get("own_ip"), "ipv6": dn42.get("own_ipv6")}
+        self._inventory_nodes = inventory_nodes
+        self._peer_records = peer_records
+        self._node_summaries = summaries
+        self._dn42_sources = sources
+        self._snapshot_ready = True
 
     def ensure_exists(self) -> None:
         if not self.ansible_dir.is_dir():
             raise FileNotFoundError(f"not an Ansible config repo: {self.root}")
+
+    def _ensure_snapshot(self) -> None:
+        if not self._snapshot_ready:
+            self.refresh_snapshot()
 
     def node_dir(self, node: str) -> Path:
         self._validate_node_id(node)
@@ -63,30 +112,16 @@ class ConfigRepository:
         return self.peer_dir(node) / f"{asn}.yml"
 
     def list_inventory_nodes(self) -> list[str]:
-        inv = load_yaml(self.ansible_dir / "inventory.yml")
-        hosts = ((inv.get("bird_nodes") or {}).get("hosts")) or {}
-        return sorted(hosts)
+        self._ensure_snapshot()
+        return list(self._inventory_nodes)
 
     def list_nodes(self) -> list[NodeSummary]:
-        nodes: list[NodeSummary] = []
-        for node in self.list_inventory_nodes():
-            node_vars = load_yaml(self.node_dir(node) / "main.yml")
-            meta = node_vars.get("node") or {}
-            peering = meta.get("peering") or {}
-            nodes.append(
-                NodeSummary(
-                    id=node,
-                    name=meta.get("name", node),
-                    peering_enabled=bool(peering.get("enabled", True)),
-                    peer_count=len(self.list_peer_asns(node)),
-                    peering=NodePeeringMetadata.from_yaml(peering),
-                )
-            )
-        return nodes
+        self._ensure_snapshot()
+        return [self._node_summaries[node] for node in self._inventory_nodes]
 
     def node_metadata(self, node: str) -> NodePeeringMetadata:
         self.require_node(node)
-        return next(item.peering for item in self.list_nodes() if item.id == node)
+        return self._node_summaries[node].peering
 
     def allocated_listen_port(
         self,
@@ -99,12 +134,11 @@ class ConfigRepository:
             return int(current)
         metadata = self.node_metadata(node)
         policy = metadata.listen_port_policy
-        used: set[int] = set()
-        for peer_asn in self.list_peer_asns(node):
-            peer = self.read_peer(node, peer_asn) or {}
-            port = (peer.get("wireguard") or {}).get("listen_port")
-            if port is not None:
-                used.add(int(port))
+        used = {
+            int((peer.get("wireguard") or {})["listen_port"])
+            for peer in self._peer_records.get(node, {}).values()
+            if (peer.get("wireguard") or {}).get("listen_port") is not None
+        }
         return allocate_listen_port(
             asn,
             mode=ListenPortMode(policy.mode),
@@ -114,40 +148,23 @@ class ConfigRepository:
         )
 
     def require_node(self, node: str) -> None:
-        if node not in set(self.list_inventory_nodes()):
+        self._ensure_snapshot()
+        if node not in self._node_summaries:
             raise KeyError(node)
 
     def read_peer(self, node: str, asn: int) -> dict[str, Any] | None:
-        path = self.peer_file(node, asn)
-        if not path.exists():
-            return None
-        data = load_yaml(path)
-        # The filename is the ownership boundary: AS424242xxxx may only edit
-        # dn42-peers/424242xxxx.yml, so the inner YAML must agree with the path.
-        if data.get("asn") != asn:
-            raise ValueError(f"peer file {path} has mismatched ASN {data.get('asn')}")
-        return data
+        self.require_node(node)
+        peer = self._peer_records[node].get(asn)
+        return dict(peer) if peer is not None else None
 
     def list_peer_asns(self, node: str) -> list[int]:
-        directory = self.peer_dir(node)
-        if not directory.exists():
-            return []
-        asns: list[int] = []
-        for path in sorted(directory.glob("*.yml"), key=lambda item: item.name):
-            try:
-                asn = int(path.stem)
-            except ValueError:
-                continue
-            data = load_yaml(path)
-            if data.get("asn") != asn:
-                raise ValueError(f"peer file {path} has mismatched ASN {data.get('asn')}")
-            asns.append(asn)
-        return sorted(asns)
+        self.require_node(node)
+        return list(self._peer_records[node])
 
     def list_peers(self, node: str) -> list[PeerResponse]:
+        self.require_node(node)
         return [
-            self.peer_to_response(node, asn, self.read_peer(node, asn) or {})
-            for asn in self.list_peer_asns(node)
+            self.peer_to_response(node, asn, data) for asn, data in self._peer_records[node].items()
         ]
 
     def write_peer(self, node: str, asn: int, data: dict[str, Any]) -> Path:
@@ -155,20 +172,32 @@ class ConfigRepository:
         data["asn"] = asn
         path = self.peer_file(node, asn)
         dump_yaml(path, data)
+        self._peer_records.setdefault(node, {})[asn] = data
+        summary = self._node_summaries.get(node)
+        if summary is not None:
+            self._node_summaries[node] = summary.model_copy(
+                update={"peer_count": len(self._peer_records[node])}
+            )
         return path
 
     def delete_peer(self, node: str, asn: int) -> Path:
         path = self.peer_file(node, asn)
         if path.exists():
             path.unlink()
+        self._peer_records.setdefault(node, {}).pop(asn, None)
+        summary = self._node_summaries.get(node)
+        if summary is not None:
+            self._node_summaries[node] = summary.model_copy(
+                update={"peer_count": len(self._peer_records[node])}
+            )
         return path
 
     def node_dn42_source(self, node: str, mode: BgpTransportMode) -> str | None:
-        dn42 = load_yaml(self.node_dir(node) / "bird-dn42.yml").get("dn42") or {}
+        self.require_node(node)
         if mode == BgpTransportMode.ipv4:
-            return dn42.get("own_ip")
+            return self._dn42_sources[node].get("ipv4")
         if mode == BgpTransportMode.ipv6:
-            return dn42.get("own_ipv6")
+            return self._dn42_sources[node].get("ipv6")
         return None
 
     def connection_info(
