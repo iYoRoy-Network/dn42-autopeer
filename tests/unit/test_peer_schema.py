@@ -1,5 +1,4 @@
 import pytest
-from pydantic import ValidationError
 
 from autopeer.domain.peer import (
     ListenPortMode,
@@ -64,18 +63,19 @@ def test_endpoint_rejects_unbracketed_ipv6():
         canonical_endpoint("2001:db8::1:22024")
 
 
-def test_peer_request_rejects_single_family_until_template_supports_it():
-    with pytest.raises(ValidationError):
-        PeerCreateRequest.model_validate(
-            {
-                "contact": "operator@example.net",
-                "wireguard": {
-                    "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-                    "endpoint": "example.com:22024",
-                },
-                "bgp": {
-                    "transport": {"mode": "ipv6_link_local", "remote_address": "fe80::1"},
-                    "address_families": ["ipv6"],
-                },
-            }
-        )
+def test_peer_request_accepts_single_family():
+    request = PeerCreateRequest.model_validate(
+        {
+            "contact": "operator@example.net",
+            "wireguard": {
+                "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "endpoint": "example.com:22024",
+            },
+            "bgp": {
+                "transport": {"mode": "ipv6_link_local", "remote_address": "fe80::1"},
+                "address_families": ["ipv6"],
+            },
+        }
+    )
+
+    assert request.bgp.address_families == ["ipv6"]

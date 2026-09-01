@@ -65,6 +65,15 @@ class BgpTransportMode(str, Enum):
     ipv6 = "ipv6"
 
 
+class BgpSessionMode(str, Enum):
+    mp_bgp_ipv6_link_local = "mp_bgp_ipv6_link_local"
+    mp_bgp_ipv6_global = "mp_bgp_ipv6_global"
+    dual_ipv6_link_local = "dual_ipv6_link_local"
+    dual_ipv6_global = "dual_ipv6_global"
+    ipv4 = "ipv4"
+    ipv6 = "ipv6"
+
+
 def validate_asn(asn: int) -> int:
     if asn < ASN_MIN or asn > ASN_MAX:
         raise ValueError("ASN must be within 1..4294967295")
@@ -205,37 +214,119 @@ class BgpTransport(BaseModel):
 class BgpCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    transport: BgpTransport
-    address_families: list[Literal["ipv4", "ipv6"]] = Field(
-        default_factory=lambda: ["ipv4", "ipv6"]
-    )
-    extended_next_hop: bool = True
+    mp_bgp: bool = False
+    ipv4_enabled: bool = True
+    ipv6_enabled: bool = True
+    ipv6_mode: Literal["link_local", "global"] = "link_local"
+    ipv4_address: str | None = None
+    ipv6_address: str | None = None
+    ipv6_link_local_address: str | None = None
 
-    @field_validator("address_families")
+    @model_validator(mode="before")
     @classmethod
-    def address_families_valid(cls, value: list[str]) -> list[str]:
-        normalized = sorted(set(value))
-        if not normalized:
-            raise ValueError("at least one address family is required")
-        # Current BIRD template enables both channels; fail closed for MVP.
-        if normalized != ["ipv4", "ipv6"]:
-            raise ValueError("current Ansible template supports only ipv4+ipv6 together")
-        return normalized
+    def legacy_fields(cls, value):
+        if isinstance(value, dict) and "transport" in value:
+            transport = value["transport"]
+            mode = transport.get("mode")
+            converted = dict(value)
+            converted.pop("transport", None)
+            families = converted.pop("address_families", ["ipv4", "ipv6"])
+            converted["ipv4_enabled"] = "ipv4" in families
+            converted["ipv6_enabled"] = "ipv6" in families
+            if mode == "ipv4":
+                converted["ipv4_address"] = transport.get("remote_address")
+                converted["ipv6_enabled"] = False
+            elif mode == "ipv6":
+                converted["ipv6_address"] = transport.get("remote_address")
+                converted["ipv4_enabled"] = False
+                converted["ipv6_mode"] = "global"
+            else:
+                converted["ipv6_link_local_address"] = transport.get("remote_address")
+                converted["ipv6_mode"] = "link_local"
+            converted["mp_bgp"] = False
+            if mode == "ipv6_link_local":
+                converted["ipv4_enabled"] = False
+            converted.pop("extended_next_hop", None)
+            return converted
+        return value
+
+    @model_validator(mode="after")
+    def configuration_valid(self) -> "BgpCreate":
+        if self.mp_bgp:
+            if not self.ipv6_enabled:
+                raise ValueError("MP-BGP requires IPv6 to be enabled")
+            self.ipv4_enabled = False
+        elif not self.ipv4_enabled and not self.ipv6_enabled:
+            raise ValueError("at least one address family must be enabled")
+        if self.ipv4_enabled:
+            self._validate_address(self.ipv4_address, 4, "ipv4_address")
+        if self.ipv6_enabled:
+            if self.ipv6_mode == "global":
+                self._validate_address(self.ipv6_address, 6, "ipv6_address", require_global=True)
+            else:
+                self._validate_address(
+                    self.ipv6_link_local_address,
+                    6,
+                    "ipv6_link_local_address",
+                    require_link_local=True,
+                )
+        self.normalized()
+        return self
+
+    @staticmethod
+    def _validate_address(
+        value: str | None,
+        version: int,
+        field_name: str,
+        *,
+        require_global: bool = False,
+        require_link_local: bool = False,
+    ) -> None:
+        if not value:
+            raise ValueError(f"{field_name} is required")
+        address = ipaddress.ip_address(value)
+        if address.version != version:
+            raise ValueError(f"{field_name} has the wrong address family")
+        if require_global and (address.is_link_local or not address.is_global):
+            raise ValueError("ipv6_address must be a global unicast address")
+        if require_link_local and not address.is_link_local:
+            raise ValueError("ipv6_link_local_address must be link-local")
+
+    @property
+    def address_families(self) -> list[str]:
+        if self.mp_bgp:
+            return ["ipv4", "ipv6"]
+        return [
+            family
+            for family, enabled in (("ipv4", self.ipv4_enabled), ("ipv6", self.ipv6_enabled))
+            if enabled
+        ]
+
+    def normalized(self) -> "BgpCreate":
+        for field_name in ("ipv4_address", "ipv6_address", "ipv6_link_local_address"):
+            value = getattr(self, field_name)
+            if value:
+                setattr(self, field_name, ipaddress.ip_address(value).compressed)
+        return self
 
 
 class BgpPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    transport: BgpTransport | None = None
-    address_families: list[Literal["ipv4", "ipv6"]] | None = None
-    extended_next_hop: bool | None = None
+    mp_bgp: bool | None = None
+    ipv4_enabled: bool | None = None
+    ipv6_enabled: bool | None = None
+    ipv6_mode: Literal["link_local", "global"] | None = None
+    ipv4_address: str | None = None
+    ipv6_address: str | None = None
+    ipv6_link_local_address: str | None = None
 
-    @field_validator("address_families")
+    @field_validator("ipv4_address", "ipv6_address", "ipv6_link_local_address")
     @classmethod
-    def address_families_valid(cls, value: list[str] | None) -> list[str] | None:
+    def address_valid(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return BgpCreate.address_families_valid(value)
+        return ipaddress.ip_address(value).compressed
 
 
 class PeerCreateRequest(BaseModel):
@@ -291,6 +382,8 @@ class PeerResponse(BaseModel):
     bgp_transport: BgpTransport
     address_families: list[Literal["ipv4", "ipv6"]]
     extended_next_hop: bool
+    session_mode: BgpSessionMode | None = None
+    bgp: dict[str, object] = Field(default_factory=dict)
     connection_info: PeerConnectionInfo | None = None
     managed_schema: str = "dn42-wireguard-v1"
 

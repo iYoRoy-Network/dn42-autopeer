@@ -163,8 +163,7 @@ class PeerService:
                 description=request.contact,
                 public_key=request.wireguard.public_key,
                 endpoint=request.wireguard.endpoint,
-                bgp_transport=request.bgp.transport,
-                extended_next_hop=request.bgp.extended_next_hop,
+                bgp=request.bgp,
                 listen_port=self.repo.allocated_listen_port(node, asn),
                 mtu=request.wireguard.mtu,
             )
@@ -189,25 +188,56 @@ class PeerService:
                 wg["mtu"] = request.wireguard.mtu
         wg["listen_port"] = self.repo.allocated_listen_port(node, asn, existing)
         if request.bgp is not None:
-            if request.bgp.transport is not None:
-                rebuilt = self.repo.build_peer_yaml(
-                    node=node,
-                    asn=asn,
-                    description=existing.get("description"),
-                    public_key=wg["public_key"],
-                    endpoint=wg["endpoint"],
-                    bgp_transport=request.bgp.transport,
-                    extended_next_hop=bool(bgp.get("extended_next_hop", True)),
-                    mtu=int(wg.get("mtu", 1420)),
-                )
-                existing.pop("lla", None)
-                existing.pop("dst", None)
-                existing.pop("src", None)
-                for key in ("lla", "dst", "src"):
-                    if key in rebuilt:
-                        existing[key] = rebuilt[key]
-            if request.bgp.extended_next_hop is not None:
-                bgp["extended_next_hop"] = request.bgp.extended_next_hop
+            current = dict(bgp)
+            # Existing files may use the old top-level lla/dst/src schema.
+            if "sessions" not in current:
+                current = {
+                    "mp_bgp": bool(current.get("extended_next_hop", False)),
+                    "ipv4_enabled": bool(existing.get("dst") and "." in str(existing.get("dst"))),
+                    "ipv6_enabled": bool(
+                        existing.get("lla")
+                        or (existing.get("dst") and ":" in str(existing.get("dst")))
+                    ),
+                    "ipv6_mode": "link_local" if existing.get("lla") else "global",
+                    "ipv4_address": existing.get("dst")
+                    if existing.get("dst") and "." in str(existing.get("dst"))
+                    else None,
+                    "ipv6_address": existing.get("dst")
+                    if existing.get("dst") and ":" in str(existing.get("dst"))
+                    else None,
+                    "ipv6_link_local_address": existing.get("lla"),
+                    "ipv6_link_local_interface": existing.get("wireguard", {}).get(
+                        "interface", f"dn42_{asn}"
+                    ),
+                }
+            for field in request.bgp.model_fields_set:
+                value = getattr(request.bgp, field)
+                if value is not None:
+                    current[field] = value
+            from autopeer.domain.peer import BgpCreate
+
+            merged_bgp = BgpCreate.model_validate(current)
+            rebuilt = self.repo.build_peer_yaml(
+                node=node,
+                asn=asn,
+                description=existing.get("description"),
+                public_key=wg["public_key"],
+                endpoint=wg["endpoint"],
+                bgp=merged_bgp,
+                listen_port=int(wg["listen_port"]),
+                mtu=int(wg.get("mtu", 1420)),
+            )
+            existing["bgp"] = rebuilt["bgp"]
+            for key in ("lla", "dst", "src"):
+                existing.pop(key, None)
+            for session in rebuilt["bgp"]["sessions"]:
+                if session["transport"] == "ipv6_link_local":
+                    existing["lla"] = session["neighbor"]
+                elif (session["transport"] == "ipv4" and "src" not in existing) or (
+                    session["transport"] == "ipv6" and "dst" not in existing
+                ):
+                    existing["dst"] = session["neighbor"]
+                    existing["src"] = session["source"]
         existing["asn"] = asn
         return existing
 

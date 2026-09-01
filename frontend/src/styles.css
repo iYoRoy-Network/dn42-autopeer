@@ -191,12 +191,50 @@ dt {
   padding: 2rem 0 4rem;
 }
 
-.page-tabs {
+.header-tabs {
   display: flex;
-  gap: 2rem;
-  margin-bottom: 2.5rem;
-  border-bottom: 1px solid var(--border);
+  gap: 1.5rem;
+  align-self: stretch;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 2rem;
 }
+
+.header-tabs button {
+  position: relative;
+  height: 100%;
+  padding: 0 0.15rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.header-tabs button::after {
+  position: absolute;
+  right: 0;
+  bottom: -0.75rem;
+  left: 0;
+  height: 3px;
+  background: transparent;
+  content: "";
+}
+
+.header-tabs button.active {
+  color: var(--brand);
+}
+
+.header-tabs button.active::after {
+  background: var(--brand);
+}
+
+.header-tabs span {
+  margin-left: 0.25rem;
+  color: inherit;
+  font-size: 0.85em;
+}
+
 
 .page-tabs button {
   position: relative;
@@ -519,7 +557,7 @@ dd {
 .peering-state,
 .peering-data {
   display: flex;
-  gap: 0.7rem;
+  gap: 1.25rem;
   align-items: center;
 }
 
@@ -530,11 +568,27 @@ dd {
   display: block;
 }
 
-.peering-node > div span,
-.peering-state > span {
-  margin-top: 0.2rem;
+.peering-health {
+  display: grid;
+  grid-template-columns: max-content minmax(15rem, 1fr);
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.health-lines {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) max-content;
+  column-gap: 1.5rem;
+  row-gap: 0.2rem;
+  align-items: center;
   color: var(--muted);
   font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.health-lines span {
+  display: block;
 }
 
 .node-avatar {
@@ -806,16 +860,144 @@ dd {
   font-size: 1.5rem;
 }
 
-.dialog-content {
-  display: grid;
-  gap: 1rem;
-  min-width: min(33rem, 84vw);
-  color: #17201e;
+.wizard-page {
+  width: min(100%, 72rem);
+  margin: 0 auto;
+  padding: 1rem 0 3rem;
 }
 
-.dialog-content h2,
-.form-section h3 {
+.wizard-page-header,
+.wizard-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wizard-page-header {
+  margin-bottom: 1.5rem;
+}
+
+.wizard-page-title {
+  margin-bottom: 1.5rem;
+}
+
+.wizard-page-title h1 {
   margin: 0;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.wizard-page-title p,
+.wizard-section-heading > p:last-child {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.wizard-steps {
+  display: flex;
+  gap: 1.25rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.wizard-page > .wizard-steps {
+  margin-bottom: 1.5rem;
+}
+
+.wizard-steps span.active {
+  color: var(--brand);
+  font-weight: 750;
+}
+
+.wizard-section {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.wizard-section-heading h2 {
+  margin: 0;
+}
+
+.wizard-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.wizard-form-grid.one-column {
+  grid-template-columns: 1fr;
+}
+
+.wizard-panel {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.wizard-panel h3 {
+  margin: 0;
+}
+
+.wizard-option {
+  display: flex;
+  gap: 1rem;
+  min-height: 4.25rem;
+  padding: 0.9rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface-soft);
+}
+
+.wizard-option > div {
+  min-width: 0;
+}
+
+.wizard-option strong,
+.wizard-option span {
+  display: block;
+}
+
+.wizard-option div span {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.wizard-option-selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.option-check {
+  color: var(--brand);
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.wizard-page-actions {
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  justify-content: flex-end;
+}
+
+.wizard-page .review-remote,
+.wizard-page .review-local {
+  background: var(--surface);
+}
+
+.wizard-page .review-remote {
+  border-color: #b9d2ef;
+}
+
+.wizard-page .review-local {
+  border-color: #b9dfc8;
 }
 
 .form-section {
@@ -880,7 +1062,8 @@ code {
   .details-grid,
   .detail-grid,
   .summary-grid,
-  .detail-metrics {
+  .detail-metrics,
+  .wizard-form-grid {
     grid-template-columns: 1fr;
   }
 

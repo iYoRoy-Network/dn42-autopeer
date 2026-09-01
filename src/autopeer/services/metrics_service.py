@@ -103,9 +103,9 @@ class MetricsService:
             if kind != "bird" or snapshot.error is not None:
                 continue
             protocols = {
-                protocol
+                self._peer_protocol(self._sample_protocol(sample))
                 for sample in snapshot.samples
-                if (protocol := self._sample_protocol(sample)).startswith("dn42_peer_")
+                if self._sample_protocol(sample).startswith("dn42_peer_")
                 and self._is_up_sample(sample)
                 and bool(sample.get("value"))
             }
@@ -146,6 +146,13 @@ class MetricsService:
     def _sample_protocol(sample: dict[str, Any]) -> str:
         labels = sample.get("labels", {})
         return str(labels.get("protocol") or labels.get("name") or "")
+
+    @staticmethod
+    def _peer_protocol(protocol: str) -> str:
+        for suffix in ("_ipv4", "_ipv6"):
+            if protocol.endswith(suffix):
+                return protocol[: -len(suffix)]
+        return protocol
 
     @staticmethod
     def _is_up_sample(sample: dict[str, Any]) -> bool:
