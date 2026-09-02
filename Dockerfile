@@ -24,12 +24,14 @@ RUN apt-get update \
        rsync \
        wireguard-tools \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin autopeer
+    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin autopeer \
+    && mkdir -p /data/autopeer /config-repo \
+    && chown autopeer:autopeer /data/autopeer
 
 WORKDIR /app
 COPY --from=builder /dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm -f /tmp/*.whl
-COPY config ./config
+COPY --chown=autopeer:autopeer config ./config
 
 USER autopeer
 EXPOSE 8080

@@ -62,6 +62,20 @@ Run both services with Docker Compose:
 docker compose up --build
 ```
 
+The backend image can also run independently after mounting a writable config repository and data directory:
+
+```bash
+docker build -t iyoroynet-autopeer .
+docker run --rm -p 8080:8080 \
+  -v /path/to/Bird2-Configuration:/config-repo \
+  -v autopeer-data:/data/autopeer \
+  --env-file .env \
+  iyoroynet-autopeer
+```
+
+GitHub Actions runs backend checks, frontend builds, and a Docker build for pull requests. Pushes to
+`main` and `v*` tags also publish the backend image to `ghcr.io/<owner>/<repository>`.
+
 Open the frontend at `http://127.0.0.1:5173`. Vite proxies `/api/*` to the API service, so browser
 requests retain the signed Kioubit session cookie without CORS configuration. For local frontend-only
 development, run `npm install && npm run dev` from `frontend/`; its default proxy target is
