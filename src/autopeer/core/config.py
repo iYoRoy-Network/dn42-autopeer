@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     metrics_refresh_seconds: float = Field(default=30.0, gt=0)
     metrics_max_concurrency: int = Field(default=4, ge=1, le=32)
     config_refresh_seconds: float = Field(default=30.0, gt=0)
+    agent_enabled: bool = False
+    agent_ca_file: Path | None = None
+    agent_client_cert_file: Path | None = None
+    agent_client_key_file: Path | None = None
+    agent_signing_private_key_file: Path | None = None
+    agent_timeout_seconds: float = Field(default=15.0, gt=0)
 
     @field_validator("admin_asns", mode="before")
     @classmethod
@@ -76,6 +82,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_auth_settings(self) -> Settings:
+        if self.agent_enabled:
+            required = {
+                "AUTOPEER__AGENT_CA_FILE": self.agent_ca_file,
+                "AUTOPEER__AGENT_CLIENT_CERT_FILE": self.agent_client_cert_file,
+                "AUTOPEER__AGENT_CLIENT_KEY_FILE": self.agent_client_key_file,
+                "AUTOPEER__AGENT_SIGNING_PRIVATE_KEY_FILE": self.agent_signing_private_key_file,
+            }
+            missing = [
+                name for name, path in required.items() if path is None or not path.is_file()
+            ]
+            if missing:
+                raise ValueError(f"agent integration requires readable files: {', '.join(missing)}")
         if self.auth_mode != "kioubit":
             return self
         if not self.session_secret:

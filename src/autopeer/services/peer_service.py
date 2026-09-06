@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from autopeer.adapters.agent import AgentClient
 from autopeer.adapters.ansible import AnsibleRunner
 from autopeer.adapters.git import GitClient
 from autopeer.adapters.repository import ConfigRepository
@@ -34,6 +35,7 @@ class PeerService:
             author_email=settings.git_author_email,
         )
         self.ansible = AnsibleRunner(settings)
+        self.agent = AgentClient(settings) if settings.agent_enabled else None
 
     def list_nodes(self):
         self.repo.ensure_exists()
@@ -109,9 +111,24 @@ class PeerService:
             self.git.push()
 
         deploy_result = "skipped"
-        if self.settings.deploy_enabled:
-            # This playbook is deliberately peer-scoped, including its render
-            # step; never widen a self-service mutation when targeted deploy is enabled.
+        if self.settings.agent_enabled:
+            metadata = self.repo.node_metadata(node)
+            if not metadata.agent_url:
+                raise ValueError(f"node {node} has no agent_url configured")
+            if operation == "delete":
+                self.agent.delete(metadata.agent_url, asn)
+            else:
+                current = self.repo.read_peer(node, asn)
+                if current is None:
+                    raise RuntimeError("peer disappeared after write")
+                self.agent.apply(
+                    metadata.agent_url,
+                    asn,
+                    self.repo.agent_peer_payload(node, asn, current),
+                    method="POST" if operation == "create" else "PUT",
+                )
+            deploy_result = "agent"
+        elif self.settings.deploy_enabled:
             if self.settings.targeted_deploy_enabled:
                 self.ansible.deploy_peer(
                     node,

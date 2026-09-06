@@ -28,12 +28,7 @@ because `ansible/tasks/load-dn42-peers.yml` aggregates them into `dn42.peers`, b
 configuration limitation. The backend therefore never reads host state through `ansible-inventory`;
 it parses the YAML files directly and only writes the fixed `dn42-peers/<asn>.yml` path.
 
-The targeted peer playbook lives in
-`Bird2-Configuration/ansible/playbooks/deploy-dn42-peer.yml`. It renders only
-`dn42_<asn>.conf` and `dn42/peers/dn42_<asn>.conf` for the selected peer, then
-updates only those remote files, runs `birdc configure`, and starts/stops or
-syncs only that WireGuard interface. It deliberately does not run the host-wide
-render or validate playbooks.
+The current deployment flow can either use the legacy targeted peer playbook or the new agent-backed flow. The agent-backed flow is configured per node with `node.peering.agent_url` and uses mTLS plus request signatures from the backend. The backend still keeps `host_vars/<node>/dn42-peers/<asn>.yml` as the source of truth, commits the YAML to Git, then sends a signed semantic deployment request to the node-local root agent.
 
 ## Repository layout
 
@@ -138,6 +133,12 @@ All settings use the `AUTOPEER__` prefix and `__` nested delimiter.
 | `AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE` | unset | PEM public key used to verify Kioubit signatures |
 | `AUTOPEER__ADMIN_ASNS` | empty | Comma-separated admin ASN allowlist, for example `4242422024,4242423128` |
 | `AUTOPEER__METRICS_TARGETS_FILE` | unset | YAML map of exporter URLs |
+| `AUTOPEER__AGENT_ENABLED` | `false` | Send peer deployments to node agents instead of targeted Ansible |
+| `AUTOPEER__AGENT_CA_FILE` | unset | CA bundle used to verify node-agent certificates |
+| `AUTOPEER__AGENT_CLIENT_CERT_FILE` | unset | Backend mTLS client certificate |
+| `AUTOPEER__AGENT_CLIENT_KEY_FILE` | unset | Backend mTLS client private key |
+| `AUTOPEER__AGENT_SIGNING_PRIVATE_KEY_FILE` | unset | Ed25519 key used for request signatures |
+| `AUTOPEER__AGENT_TIMEOUT_SECONDS` | `15` | Agent request timeout |
 
 `config/kioubit-public-key.pem` contains the Kioubit public verification key from their example.
 It is public material, not a private credential. Configure `AUTOPEER__KIOUBIT_DOMAIN` with the

@@ -225,6 +225,36 @@ class ConfigRepository:
             "bgp_local_address": local_address,
         }
 
+    def agent_peer_payload(self, node: str, asn: int, data: dict[str, Any]) -> dict[str, Any]:
+        """Convert canonical peer YAML into the agent's semantic request."""
+        self.require_node(node)
+        bgp = data.get("bgp") or {}
+        sessions = bgp.get("sessions") or []
+        payload_bgp: dict[str, Any] = {
+            "own_v4": self._dn42_sources[node].get("ipv4"),
+            "own_v6": self._dn42_sources[node].get("ipv6"),
+            "mp_bgp": bgp.get("mode") == "mp_bgp",
+        }
+        for session in sessions:
+            name = session.get("name")
+            if name == "ipv4":
+                payload_bgp["ipv4"] = {"neighbor": session.get("neighbor")}
+            elif name in {"ipv6", "mp-bgp"}:
+                payload_bgp["ipv6"] = {
+                    "lla": session.get("transport") == BgpTransportMode.ipv6_link_local,
+                    "neighbor": session.get("neighbor"),
+                }
+        wireguard = data.get("wireguard") or {}
+        return {
+            "wireguard": {
+                "public_key": wireguard.get("public_key"),
+                "endpoint": wireguard.get("endpoint"),
+                "listen_port": int(wireguard.get("listen_port")),
+                "mtu": int(wireguard.get("mtu", 1420)),
+            },
+            "bgp": payload_bgp,
+        }
+
     def _bgp_sessions(self, node: str, asn: int, bgp: BgpCreate) -> list[dict[str, Any]]:
         if bgp.mp_bgp:
             address = (

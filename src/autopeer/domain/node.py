@@ -39,6 +39,7 @@ class NodePeeringMetadata(BaseModel):
     subtitle: str | None = None
     protocol_stack: Literal["ipv4", "ipv6", "dual_stack"] = "dual_stack"
     endpoint: str | None = None
+    agent_url: str | None = None
     publickey: str | None = None
     listen_port_policy: NodeListenPortPolicy = Field(default_factory=NodeListenPortPolicy)
     exporters: dict[str, str] = Field(default_factory=dict)
@@ -58,6 +59,12 @@ class NodePeeringMetadata(BaseModel):
             endpoint = None
         elif not isinstance(endpoint, str) or not NODE_ENDPOINT_RE.fullmatch(endpoint):
             raise ValueError("node.peering.endpoint must be a DNS name without a port")
+        agent_url = value.get("agent_url")
+        if agent_url in ("", None):
+            agent_url = None
+        elif not isinstance(agent_url, str) or not agent_url.startswith("https://"):
+            raise ValueError("node.peering.agent_url must be an HTTPS URL")
+
         public_key = value.get("publickey", value.get("public_key"))
         if public_key in ("", None):
             public_key = None
@@ -66,6 +73,7 @@ class NodePeeringMetadata(BaseModel):
             subtitle=subtitle,
             protocol_stack=value.get("protocol_stack", "dual_stack"),
             endpoint=endpoint,
+            agent_url=agent_url,
             publickey=public_key,
             listen_port_policy=value.get("listen_port_policy") or {},
             exporters={
