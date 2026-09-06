@@ -36,14 +36,16 @@ var asnPattern = regexp.MustCompile(`^[0-9]+$`)
 var hostPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 
 type Config struct {
-	ListenAddr       string
-	CAFile           string
-	CertificateFile  string
-	PrivateKeyFile   string
-	SigningPublicKey string
-	StateDir         string
-	WireGuardKeyFile string
-	BirdPeerDir      string
+	ListenAddr          string
+	CAFile              string
+	CertificateFile     string
+	PrivateKeyFile      string
+	SigningPublicKey    string
+	StateDir            string
+	WireGuardPrivateKey string
+	OwnV4               string
+	OwnV6               string
+	BirdPeerDir         string
 }
 
 type Agent struct {
@@ -74,8 +76,6 @@ type IPv6Request struct {
 }
 
 type BGPRequest struct {
-	OwnV4 string       `json:"own_v4,omitempty"`
-	OwnV6 string       `json:"own_v6,omitempty"`
 	MPBGP bool         `json:"mp_bgp"`
 	IPv4  *IPv4Request `json:"ipv4,omitempty"`
 	IPv6  *IPv6Request `json:"ipv6,omitempty"`
@@ -126,23 +126,27 @@ func main() {
 
 func loadConfig() (Config, error) {
 	config := Config{
-		ListenAddr:       envOr("AUTOPEER_AGENT_LISTEN_ADDR", ":8443"),
-		CAFile:           os.Getenv("AUTOPEER_AGENT_CA_FILE"),
-		CertificateFile:  os.Getenv("AUTOPEER_AGENT_CERT_FILE"),
-		PrivateKeyFile:   os.Getenv("AUTOPEER_AGENT_KEY_FILE"),
-		SigningPublicKey: os.Getenv("AUTOPEER_AGENT_SIGNING_PUBLIC_KEY_FILE"),
-		StateDir:         envOr("AUTOPEER_AGENT_STATE_DIR", "/var/lib/autopeer-agent"),
-		WireGuardKeyFile: envOr("AUTOPEER_AGENT_WIREGUARD_PRIVATE_KEY_FILE", "/etc/wireguard/autopeer.key"),
-		BirdPeerDir:      envOr("AUTOPEER_AGENT_BIRD_PEER_DIR", "/etc/bird/dn42/peers"),
+		ListenAddr:          envOr("AUTOPEER_AGENT_LISTEN_ADDR", ":8443"),
+		CAFile:              os.Getenv("AUTOPEER_AGENT_CA_FILE"),
+		CertificateFile:     os.Getenv("AUTOPEER_AGENT_CERT_FILE"),
+		PrivateKeyFile:      os.Getenv("AUTOPEER_AGENT_KEY_FILE"),
+		SigningPublicKey:    os.Getenv("AUTOPEER_AGENT_SIGNING_PUBLIC_KEY_FILE"),
+		StateDir:            envOr("AUTOPEER_AGENT_STATE_DIR", "/var/lib/autopeer-agent"),
+		WireGuardPrivateKey: os.Getenv("AUTOPEER_AGENT_WIREGUARD_PRIVATE_KEY"),
+		OwnV4:               os.Getenv("AUTOPEER_AGENT_OWN_V4"),
+		OwnV6:               os.Getenv("AUTOPEER_AGENT_OWN_V6"),
+		BirdPeerDir:         envOr("AUTOPEER_AGENT_BIRD_PEER_DIR", "/etc/bird/dn42/peers"),
 	}
 	for name, value := range map[string]string{
-		"AUTOPEER_AGENT_CA_FILE":                    config.CAFile,
-		"AUTOPEER_AGENT_CERT_FILE":                  config.CertificateFile,
-		"AUTOPEER_AGENT_KEY_FILE":                   config.PrivateKeyFile,
-		"AUTOPEER_AGENT_SIGNING_PUBLIC_KEY_FILE":    config.SigningPublicKey,
-		"AUTOPEER_AGENT_WIREGUARD_PRIVATE_KEY_FILE": config.WireGuardKeyFile,
+		"AUTOPEER_AGENT_CA_FILE":                 config.CAFile,
+		"AUTOPEER_AGENT_CERT_FILE":               config.CertificateFile,
+		"AUTOPEER_AGENT_KEY_FILE":                config.PrivateKeyFile,
+		"AUTOPEER_AGENT_SIGNING_PUBLIC_KEY_FILE": config.SigningPublicKey,
+		"AUTOPEER_AGENT_WIREGUARD_PRIVATE_KEY":   config.WireGuardPrivateKey,
+		"AUTOPEER_AGENT_OWN_V4":                  config.OwnV4,
+		"AUTOPEER_AGENT_OWN_V6":                  config.OwnV6,
 	} {
-		if value == "" {
+		if value == "" && name != "AUTOPEER_AGENT_OWN_V4" && name != "AUTOPEER_AGENT_OWN_V6" {
 			return Config{}, fmt.Errorf("%s is required", name)
 		}
 	}
@@ -244,7 +248,7 @@ func (a *Agent) peer(w http.ResponseWriter, r *http.Request) {
 		decoder.DisallowUnknownFields()
 		err = decoder.Decode(&request)
 		if err == nil {
-			err = validatePeerRequest(request)
+			err = validatePeerRequest(request, a.config)
 		}
 		if err == nil {
 			err = a.applyPeer(asn, request)
@@ -310,7 +314,7 @@ func parseASN(value string) (int, bool) {
 	return asn, err == nil && asn >= asnMin && asn <= asnMax
 }
 
-func validatePeerRequest(request PeerRequest) error {
+func validatePeerRequest(request PeerRequest, config Config) error {
 	if !validWireGuardKey(request.WireGuard.PublicKey) || request.WireGuard.ListenPort < 1 || request.WireGuard.ListenPort > 65535 || request.WireGuard.MTU < 576 || request.WireGuard.MTU > 9000 {
 		return errors.New("invalid WireGuard parameters")
 	}
@@ -324,13 +328,13 @@ func validatePeerRequest(request PeerRequest) error {
 		return errors.New("MP-BGP requires IPv6")
 	}
 	if request.BGP.IPv4 != nil {
-		if net.ParseIP(request.BGP.OwnV4) == nil || net.ParseIP(request.BGP.IPv4.Neighbor).To4() == nil {
+		if net.ParseIP(config.OwnV4) == nil || net.ParseIP(request.BGP.IPv4.Neighbor).To4() == nil {
 			return errors.New("invalid IPv4 local or neighbor address")
 		}
 	}
 	if request.BGP.IPv6 != nil {
 		neighbor := net.ParseIP(request.BGP.IPv6.Neighbor)
-		if net.ParseIP(request.BGP.OwnV6) == nil || neighbor == nil || neighbor.To4() != nil {
+		if net.ParseIP(config.OwnV6) == nil || neighbor == nil || neighbor.To4() != nil {
 			return errors.New("invalid IPv6 local or neighbor address")
 		}
 		if request.BGP.IPv6.LLA != neighbor.IsLinkLocalUnicast() {
@@ -365,11 +369,12 @@ func validEndpoint(value string) bool {
 
 func (a *Agent) applyPeer(asn int, request PeerRequest) error {
 	interfaceName := fmt.Sprintf("dn42_%d", asn)
-	keyPath := a.config.WireGuardKeyFile
-	if _, err := os.Stat(keyPath); err != nil {
-		return fmt.Errorf("WireGuard private key unavailable: %w", err)
+	privateKeyFile, err := writePrivateKeyTemp(a.config.WireGuardPrivateKey)
+	if err != nil {
+		return err
 	}
-	if err := ensureInterface(interfaceName, keyPath, request.WireGuard.ListenPort, request.WireGuard.MTU); err != nil {
+	defer os.Remove(privateKeyFile)
+	if err := ensureInterface(interfaceName, privateKeyFile, request.WireGuard.ListenPort, request.WireGuard.MTU); err != nil {
 		return err
 	}
 	args := []string{"set", interfaceName, "peer", request.WireGuard.PublicKey, "allowed-ips", "10.0.0.0/8,172.20.0.0/14,172.31.0.0/16,fd00::/8,fe00::/8", "endpoint", request.WireGuard.Endpoint}
@@ -379,16 +384,42 @@ func (a *Agent) applyPeer(asn int, request PeerRequest) error {
 	if _, err := run("ip", "link", "set", "dev", interfaceName, "up"); err != nil {
 		return err
 	}
-	if err := applyAddresses(interfaceName, request); err != nil {
+	if err := applyAddresses(interfaceName, request, a.config); err != nil {
 		return err
 	}
-	if err := writeBirdConfigs(a.config.BirdPeerDir, asn, request); err != nil {
+	if err := writeBirdConfigs(a.config.BirdPeerDir, asn, request, a.config); err != nil {
 		return err
 	}
 	if _, err := run("birdc", "configure"); err != nil {
 		return err
 	}
 	return a.savePeer(asn, StoredPeer{PublicKey: request.WireGuard.PublicKey})
+}
+
+func writePrivateKeyTemp(value string) (string, error) {
+	if !validWireGuardKey(value) {
+		return "", errors.New("invalid WireGuard private key")
+	}
+	file, err := os.CreateTemp("", "autopeer-wg-key-*")
+	if err != nil {
+		return "", err
+	}
+	name := file.Name()
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		os.Remove(name)
+		return "", err
+	}
+	if _, err := file.WriteString(value + "\n"); err != nil {
+		file.Close()
+		os.Remove(name)
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	return name, nil
 }
 
 func ensureInterface(name, keyPath string, port, mtu int) error {
@@ -404,9 +435,9 @@ func ensureInterface(name, keyPath string, port, mtu int) error {
 	return err
 }
 
-func applyAddresses(interfaceName string, request PeerRequest) error {
+func applyAddresses(interfaceName string, request PeerRequest, config Config) error {
 	if request.BGP.IPv4 != nil {
-		if _, err := run("ip", "-4", "addr", "replace", request.BGP.OwnV4+"/32", "peer", request.BGP.IPv4.Neighbor+"/32", "dev", interfaceName); err != nil {
+		if _, err := run("ip", "-4", "addr", "replace", config.OwnV4+"/32", "peer", request.BGP.IPv4.Neighbor+"/32", "dev", interfaceName); err != nil {
 			return err
 		}
 	}
@@ -415,7 +446,7 @@ func applyAddresses(interfaceName string, request PeerRequest) error {
 			if _, err := run("ip", "-6", "addr", "replace", "fe80::2024/64", "dev", interfaceName); err != nil {
 				return err
 			}
-		} else if _, err := run("ip", "-6", "addr", "replace", request.BGP.OwnV6+"/128", "peer", request.BGP.IPv6.Neighbor+"/128", "dev", interfaceName); err != nil {
+		} else if _, err := run("ip", "-6", "addr", "replace", config.OwnV6+"/128", "peer", request.BGP.IPv6.Neighbor+"/128", "dev", interfaceName); err != nil {
 			return err
 		}
 	}
@@ -448,7 +479,7 @@ func (a *Agent) removePeer(asn int, state StoredPeer) error {
 	return nil
 }
 
-func writeBirdConfigs(directory string, asn int, request PeerRequest) error {
+func writeBirdConfigs(directory string, asn int, request PeerRequest, config Config) error {
 	if err := os.MkdirAll(directory, 0755); err != nil {
 		return err
 	}
@@ -463,11 +494,11 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest) error {
 		if request.BGP.IPv6.LLA {
 			neighbor += fmt.Sprintf(" %% 'dn42_%d'", asn)
 		}
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d' from dnpeers {\n    neighbor %s as %d;\n    ipv4 {\n        extended next hop;\n    };\n};\n", asn, neighbor, asn)
+		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d' from dnpeers {\n    neighbor %s as %d;\n    source address %s;\n    ipv4 {\n        extended next hop;\n    };\n};\n", asn, neighbor, asn, config.OwnV6)
 		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d.conf", asn)), content)
 	}
 	if request.BGP.IPv4 != nil {
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v4' from dnpeers {\n    neighbor %s as %d;\n    ipv4 {};\n};\n", asn, request.BGP.IPv4.Neighbor, asn)
+		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v4' from dnpeers {\n    neighbor %s as %d;\n    source address %s;\n    ipv4 {};\n};\n", asn, request.BGP.IPv4.Neighbor, asn, config.OwnV4)
 		if err := writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v4.conf", asn)), content); err != nil {
 			return err
 		}
@@ -477,7 +508,7 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest) error {
 		if request.BGP.IPv6.LLA {
 			neighbor += fmt.Sprintf(" %% 'dn42_%d'", asn)
 		}
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n    neighbor %s as %d;\n    ipv6 {};\n};\n", asn, neighbor, asn)
+		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n    neighbor %s as %d;\n    source address %s;\n    ipv6 {};\n};\n", asn, neighbor, asn, config.OwnV6)
 		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v6.conf", asn)), content)
 	}
 	return nil

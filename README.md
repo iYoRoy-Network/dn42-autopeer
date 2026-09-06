@@ -28,7 +28,15 @@ because `ansible/tasks/load-dn42-peers.yml` aggregates them into `dn42.peers`, b
 configuration limitation. The backend therefore never reads host state through `ansible-inventory`;
 it parses the YAML files directly and only writes the fixed `dn42-peers/<asn>.yml` path.
 
-The current deployment flow can either use the legacy targeted peer playbook or the new agent-backed flow. The agent-backed flow is configured per node with `node.peering.agent_url` and uses mTLS plus request signatures from the backend. The backend still keeps `host_vars/<node>/dn42-peers/<asn>.yml` as the source of truth, commits the YAML to Git, then sends a signed semantic deployment request to the node-local root agent.
+The current deployment flow can either use the legacy targeted peer playbook or the new agent-backed flow. The Go agent reads the node-local WireGuard private key and local BGP addresses from its own environment. `AUTOPEER_AGENT_WIREGUARD_PRIVATE_KEY` is the base64 private-key value itself; it is never sent in the deployment request:
+
+```text
+AUTOPEER_AGENT_WIREGUARD_PRIVATE_KEY=<base64-private-key>
+AUTOPEER_AGENT_OWN_V4=172.20.234.225
+AUTOPEER_AGENT_OWN_V6=fd18:3e15:61d0::1
+```
+
+Those values are never sent in the deployment request. The backend request only contains the remote peer data and session mode.
 
 ## Repository layout
 

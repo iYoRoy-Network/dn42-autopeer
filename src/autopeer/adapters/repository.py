@@ -231,8 +231,6 @@ class ConfigRepository:
         bgp = data.get("bgp") or {}
         sessions = bgp.get("sessions") or []
         payload_bgp: dict[str, Any] = {
-            "own_v4": self._dn42_sources[node].get("ipv4"),
-            "own_v6": self._dn42_sources[node].get("ipv6"),
             "mp_bgp": bgp.get("mode") == "mp_bgp",
         }
         for session in sessions:

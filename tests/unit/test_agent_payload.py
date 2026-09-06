@@ -61,8 +61,6 @@ def test_agent_payload_for_mp_bgp(tmp_path: Path):
             "mtu": 1420,
         },
         "bgp": {
-            "own_v4": "172.20.0.1",
-            "own_v6": "fd00::1",
             "mp_bgp": True,
             "ipv6": {"lla": True, "neighbor": "fe80::1"},
         },
@@ -94,8 +92,6 @@ def test_agent_payload_for_dual_independent_sessions(tmp_path: Path):
     payload = repo.agent_peer_payload("test01", 4242422002, peer)
 
     assert payload["bgp"] == {
-        "own_v4": "172.20.0.1",
-        "own_v6": "fd00::1",
         "mp_bgp": False,
         "ipv4": {"neighbor": "172.20.0.2"},
         "ipv6": {"lla": False, "neighbor": "2602:fc2f::2"},
