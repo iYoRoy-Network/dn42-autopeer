@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -84,10 +85,6 @@ type BGPRequest struct {
 type PeerRequest struct {
 	WireGuard WireGuardRequest `json:"wireguard"`
 	BGP       BGPRequest       `json:"bgp"`
-}
-
-type StoredPeer struct {
-	PublicKey string `json:"public_key"`
 }
 
 var execCommand = func(name string, args ...string) *exec.Cmd {
@@ -227,21 +224,21 @@ func (a *Agent) peer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	state, stateErr := a.loadPeer(asn)
-	if r.Method == http.MethodPost && stateErr == nil {
+	_, configErr := os.Stat(a.peerConfigPath(asn))
+	if r.Method == http.MethodPost && configErr == nil {
 		http.Error(w, "peer already exists", http.StatusConflict)
 		return
 	}
-	if r.Method == http.MethodPut && stateErr != nil && !os.IsNotExist(stateErr) {
-		http.Error(w, "cannot read peer state", http.StatusInternalServerError)
+	if r.Method == http.MethodPut && configErr != nil && !os.IsNotExist(configErr) {
+		http.Error(w, "cannot read peer configuration", http.StatusInternalServerError)
 		return
 	}
-	if r.Method == http.MethodPut && os.IsNotExist(stateErr) {
+	if r.Method == http.MethodPut && os.IsNotExist(configErr) {
 		http.Error(w, "peer does not exist", http.StatusNotFound)
 		return
 	}
 	if r.Method == http.MethodDelete {
-		err = a.removePeer(asn, state)
+		err = a.removePeer(asn)
 	} else {
 		var request PeerRequest
 		decoder := json.NewDecoder(strings.NewReader(string(body)))
@@ -369,22 +366,18 @@ func validEndpoint(value string) bool {
 
 func (a *Agent) applyPeer(asn int, request PeerRequest) error {
 	interfaceName := fmt.Sprintf("dn42_%d", asn)
-	privateKeyFile, err := writePrivateKeyTemp(a.config.WireGuardPrivateKey)
+	configText, err := renderWireGuardConfig(interfaceName, a.config, request)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(privateKeyFile)
-	if err := ensureInterface(interfaceName, privateKeyFile, request.WireGuard.ListenPort, request.WireGuard.MTU); err != nil {
+	configPath := a.peerConfigPath(asn)
+	if err := writeRootFile(configPath, configText, 0600); err != nil {
 		return err
 	}
-	args := []string{"set", interfaceName, "peer", request.WireGuard.PublicKey, "allowed-ips", "10.0.0.0/8,172.20.0.0/14,172.31.0.0/16,fd00::/8,fe00::/8", "endpoint", request.WireGuard.Endpoint}
-	if _, err := run("wg", args...); err != nil {
+	if _, err := run("systemctl", "enable", "wg-quick@"+interfaceName); err != nil {
 		return err
 	}
-	if _, err := run("ip", "link", "set", "dev", interfaceName, "up"); err != nil {
-		return err
-	}
-	if err := applyAddresses(interfaceName, request, a.config); err != nil {
+	if _, err := run("systemctl", "restart", "wg-quick@"+interfaceName); err != nil {
 		return err
 	}
 	if err := writeBirdConfigs(a.config.BirdPeerDir, asn, request, a.config); err != nil {
@@ -393,33 +386,66 @@ func (a *Agent) applyPeer(asn int, request PeerRequest) error {
 	if _, err := run("birdc", "configure"); err != nil {
 		return err
 	}
-	return a.savePeer(asn, StoredPeer{PublicKey: request.WireGuard.PublicKey})
+	return nil
 }
 
-func writePrivateKeyTemp(value string) (string, error) {
-	if !validWireGuardKey(value) {
+func (a *Agent) peerConfigPath(asn int) string {
+	return filepath.Join("/etc/wireguard", fmt.Sprintf("dn42_%d.conf", asn))
+}
+
+func renderWireGuardConfig(interfaceName string, config Config, request PeerRequest) (string, error) {
+	if !validWireGuardKey(config.WireGuardPrivateKey) {
 		return "", errors.New("invalid WireGuard private key")
 	}
-	file, err := os.CreateTemp("", "autopeer-wg-key-*")
-	if err != nil {
-		return "", err
+	var b strings.Builder
+	b.WriteString("[Interface]\n")
+	b.WriteString("PrivateKey = ")
+	b.WriteString(config.WireGuardPrivateKey)
+	b.WriteString("\nListenPort = ")
+	b.WriteString(strconv.Itoa(request.WireGuard.ListenPort))
+	b.WriteString("\nMTU = ")
+	b.WriteString(strconv.Itoa(request.WireGuard.MTU))
+	b.WriteString("\nTable = off\n")
+	if request.BGP.IPv4 != nil {
+		b.WriteString("Address = ")
+		b.WriteString(config.OwnV4)
+		b.WriteString("/32\n")
+		b.WriteString("PostUp = ip -4 addr replace ")
+		b.WriteString(config.OwnV4)
+		b.WriteString("/32 peer ")
+		b.WriteString(request.BGP.IPv4.Neighbor)
+		b.WriteString("/32 dev %i || true\n")
+		b.WriteString("PostDown = ip -4 addr del ")
+		b.WriteString(config.OwnV4)
+		b.WriteString("/32 dev %i || true\n")
 	}
-	name := file.Name()
-	if err := file.Chmod(0600); err != nil {
-		file.Close()
-		os.Remove(name)
-		return "", err
+	if request.BGP.IPv6 != nil {
+		if request.BGP.IPv6.LLA {
+			b.WriteString("Address = fe80::2024/64\n")
+		} else {
+			b.WriteString("Address = ")
+			b.WriteString(config.OwnV6)
+			b.WriteString("/128\n")
+			b.WriteString("PostUp = ip -6 addr replace ")
+			b.WriteString(config.OwnV6)
+			b.WriteString("/128 peer ")
+			b.WriteString(request.BGP.IPv6.Neighbor)
+			b.WriteString("/128 dev %i || true\n")
+			b.WriteString("PostDown = ip -6 addr del ")
+			b.WriteString(config.OwnV6)
+			b.WriteString("/128 dev %i || true\n")
+		}
 	}
-	if _, err := file.WriteString(value + "\n"); err != nil {
-		file.Close()
-		os.Remove(name)
-		return "", err
+	b.WriteString("\n[Peer]\nPublicKey = ")
+	b.WriteString(request.WireGuard.PublicKey)
+	b.WriteString("\nAllowedIPs = 10.0.0.0/8, 172.20.0.0/14, 172.31.0.0/16, fd00::/8, fe00::/8\n")
+	if request.WireGuard.Endpoint != "" {
+		b.WriteString("Endpoint = ")
+		b.WriteString(request.WireGuard.Endpoint)
+		b.WriteString("\n")
 	}
-	if err := file.Close(); err != nil {
-		os.Remove(name)
-		return "", err
-	}
-	return name, nil
+	_ = interfaceName
+	return b.String(), nil
 }
 
 func ensureInterface(name, keyPath string, port, mtu int) error {
@@ -453,15 +479,10 @@ func applyAddresses(interfaceName string, request PeerRequest, config Config) er
 	return nil
 }
 
-func (a *Agent) removePeer(asn int, state StoredPeer) error {
+func (a *Agent) removePeer(asn int) error {
 	interfaceName := fmt.Sprintf("dn42_%d", asn)
-	if state.PublicKey != "" {
-		if _, err := run("wg", "set", interfaceName, "peer", state.PublicKey, "remove"); err != nil {
-			log.Printf("remove WireGuard peer AS%d: %v", asn, err)
-		}
-	}
-	if _, err := run("ip", "link", "delete", "dev", interfaceName); err != nil {
-		log.Printf("remove WireGuard interface AS%d: %v", asn, err)
+	if _, err := run("systemctl", "disable", "--now", "wg-quick@"+interfaceName); err != nil {
+		log.Printf("stop WireGuard %s: %v", interfaceName, err)
 	}
 	for _, suffix := range []string{"", "_v4", "_v6"} {
 		path := filepath.Join(a.config.BirdPeerDir, fmt.Sprintf("dn42_peer_%d%s.conf", asn, suffix))
@@ -472,8 +493,7 @@ func (a *Agent) removePeer(asn int, state StoredPeer) error {
 	if _, err := run("birdc", "configure"); err != nil {
 		return err
 	}
-	path := filepath.Join(a.config.StateDir, fmt.Sprintf("peer_%d.json", asn))
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(a.peerConfigPath(asn)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
@@ -494,12 +514,12 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest, config Con
 		if request.BGP.IPv6.LLA {
 			neighbor += fmt.Sprintf(" %% 'dn42_%d'", asn)
 		}
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d' from dnpeers {\n    neighbor %s as %d;\n    source address %s;\n    ipv4 {\n        extended next hop;\n    };\n};\n", asn, neighbor, asn, config.OwnV6)
-		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d.conf", asn)), content)
+		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d' from dnpeers {\n    neighbor %s as %d;\n    ipv4 {\n        extended next hop;\n    };\n};\n", asn, neighbor, asn)
+		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d.conf", asn)), content, 0644)
 	}
 	if request.BGP.IPv4 != nil {
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v4' from dnpeers {\n    neighbor %s as %d;\n    source address %s;\n    ipv4 {};\n};\n", asn, request.BGP.IPv4.Neighbor, asn, config.OwnV4)
-		if err := writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v4.conf", asn)), content); err != nil {
+		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v4' from dnpeers {\n    neighbor %s as %d;\n    ipv4 {};\n};\n", asn, request.BGP.IPv4.Neighbor, asn)
+		if err := writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v4.conf", asn)), content, 0644); err != nil {
 			return err
 		}
 	}
@@ -508,20 +528,20 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest, config Con
 		if request.BGP.IPv6.LLA {
 			neighbor += fmt.Sprintf(" %% 'dn42_%d'", asn)
 		}
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n    neighbor %s as %d;\n    source address %s;\n    ipv6 {};\n};\n", asn, neighbor, asn, config.OwnV6)
-		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v6.conf", asn)), content)
+		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n    neighbor %s as %d;\n    ipv6 {};\n};\n", asn, neighbor, asn)
+		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v6.conf", asn)), content, 0644)
 	}
 	return nil
 }
 
-func writeRootFile(path, content string) error {
+func writeRootFile(path, content string, mode fs.FileMode) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".autopeer-*")
 	if err != nil {
 		return err
 	}
 	name := temporary.Name()
 	defer os.Remove(name)
-	if err := temporary.Chmod(0644); err != nil {
+	if err := temporary.Chmod(mode); err != nil {
 		return err
 	}
 	if _, err := temporary.WriteString(content); err != nil {
@@ -534,24 +554,6 @@ func writeRootFile(path, content string) error {
 		return err
 	}
 	return os.Rename(name, path)
-}
-
-func (a *Agent) savePeer(asn int, state StoredPeer) error {
-	data, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(a.config.StateDir, fmt.Sprintf("peer_%d.json", asn))
-	return os.WriteFile(path, data, 0600)
-}
-
-func (a *Agent) loadPeer(asn int) (StoredPeer, error) {
-	data, err := os.ReadFile(filepath.Join(a.config.StateDir, fmt.Sprintf("peer_%d.json", asn)))
-	if err != nil {
-		return StoredPeer{}, err
-	}
-	var state StoredPeer
-	return state, json.Unmarshal(data, &state)
 }
 
 func run(name string, args ...string) ([]byte, error) {
