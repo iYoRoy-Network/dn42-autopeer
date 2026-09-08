@@ -35,6 +35,13 @@ const (
 
 var asnPattern = regexp.MustCompile(`^[0-9]+$`)
 var hostPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+var wireGuardAllowedIPs = []string{
+	"10.0.0.0/8",
+	"172.20.0.0/14",
+	"172.31.0.0/16",
+	"fd00::/8",
+	"fe00::/8",
+}
 
 type Config struct {
 	ListenAddr          string
@@ -245,7 +252,14 @@ func (a *Agent) peer(w http.ResponseWriter, r *http.Request) {
 		decoder.DisallowUnknownFields()
 		err = decoder.Decode(&request)
 		if err == nil {
-			err = validatePeerRequest(request, a.config)
+			var extra any
+			err = decoder.Decode(&extra)
+			if err != io.EOF {
+				err = errors.New("request body must contain exactly one JSON object")
+			}
+		}
+		if err == nil {
+			err = validatePeerRequest(asn, request, a.config)
 		}
 		if err == nil {
 			err = a.applyPeer(asn, request)
@@ -311,12 +325,18 @@ func parseASN(value string) (int, bool) {
 	return asn, err == nil && asn >= asnMin && asn <= asnMax
 }
 
-func validatePeerRequest(request PeerRequest, config Config) error {
+func validatePeerRequest(asn int, request PeerRequest, config Config) error {
+	if asn < asnMin || asn > asnMax {
+		return errors.New("ASN outside the allowed DN42 autopeer range")
+	}
 	if !validWireGuardKey(request.WireGuard.PublicKey) || request.WireGuard.ListenPort < 1 || request.WireGuard.ListenPort > 65535 || request.WireGuard.MTU < 576 || request.WireGuard.MTU > 9000 {
 		return errors.New("invalid WireGuard parameters")
 	}
 	if !validEndpoint(request.WireGuard.Endpoint) {
 		return errors.New("invalid WireGuard endpoint")
+	}
+	if !validWireGuardKey(config.WireGuardPrivateKey) {
+		return errors.New("invalid local WireGuard private key")
 	}
 	if request.BGP.IPv4 == nil && request.BGP.IPv6 == nil {
 		return errors.New("at least one BGP address family is required")
@@ -325,7 +345,7 @@ func validatePeerRequest(request PeerRequest, config Config) error {
 		return errors.New("MP-BGP requires IPv6")
 	}
 	if request.BGP.IPv4 != nil {
-		if net.ParseIP(config.OwnV4) == nil || net.ParseIP(request.BGP.IPv4.Neighbor).To4() == nil {
+		if net.ParseIP(config.OwnV4).To4() == nil || net.ParseIP(request.BGP.IPv4.Neighbor).To4() == nil {
 			return errors.New("invalid IPv4 local or neighbor address")
 		}
 	}
@@ -336,6 +356,11 @@ func validatePeerRequest(request PeerRequest, config Config) error {
 		}
 		if request.BGP.IPv6.LLA != neighbor.IsLinkLocalUnicast() {
 			return errors.New("IPv6 neighbor does not match lla flag")
+		}
+	}
+	for _, value := range wireGuardAllowedIPs {
+		if _, _, err := net.ParseCIDR(value); err != nil {
+			return fmt.Errorf("invalid fixed AllowedIPs policy: %w", err)
 		}
 	}
 	return nil
@@ -362,6 +387,14 @@ func validEndpoint(value string) bool {
 		return true
 	}
 	return hostPattern.MatchString(host)
+}
+
+func canonicalIP(value string) (string, error) {
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return "", errors.New("invalid IP address")
+	}
+	return ip.String(), nil
 }
 
 func (a *Agent) applyPeer(asn int, request PeerRequest) error {
