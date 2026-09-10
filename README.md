@@ -76,12 +76,17 @@ docker run --rm -p 8080:8080 \
   iyoroynet-autopeer
 ```
 
-GitHub Actions runs backend checks, frontend builds, and a Docker build for pull requests. Pushes to
-`main` and `v*` tags also publish the backend image to `ghcr.io/<owner>/<repository>`.
+GitHub Actions runs backend checks, frontend builds, and Go agent tests for pull requests. Pushes to `main`
+and `v*` tags also publish two GHCR images:
 
-Open the frontend at `http://127.0.0.1:5173`. Vite proxies `/api/*` to the API service, so browser
-requests retain the signed Kioubit session cookie without CORS configuration. For local frontend-only
-development, run `npm install && npm run dev` from `frontend/`; its default proxy target is
+```text
+ghcr.io/<owner>/<repository>-backend
+ghcr.io/<owner>/<repository>-frontend
+```
+
+The frontend image only serves the compiled static files. Route `/api/*`, `/healthz`, and `/readyz`
+through your own reverse proxy to the backend service. For local frontend-only development, run
+`npm install && npm run dev` from `frontend/`; its Vite proxy target defaults to
 `http://localhost:8080`.
 
 ## Development

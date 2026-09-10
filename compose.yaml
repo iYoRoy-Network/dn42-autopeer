@@ -1,9 +1,9 @@
 services:
   api:
     build: .
-    image: iyoroynet-autopeer:dev
+    image: ghcr.io/iyoroy-network/dn42-autopeer-backend:main
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env
     volumes:
@@ -12,15 +12,14 @@ services:
       - ./data:/data/autopeer
       # Public Kioubit verification key and optional metrics target configuration.
       - ./config:/config:ro
-      # SSH keys/known_hosts should be provided as secrets or read-only mounts in production.
-      - ~/.ssh:/home/autopeer/.ssh:ro
+      # Mount only dedicated deployment secrets in production.
+      - ./secrets:/run/secrets:ro
 
   frontend:
     build:
       context: ./frontend
+    image: ghcr.io/iyoroy-network/dn42-autopeer-frontend:main
     ports:
-      - "5173:5173"
-    environment:
-      VITE_API_PROXY_TARGET: http://api:8080
+      - "127.0.0.1:5173:80"
     depends_on:
       - api
