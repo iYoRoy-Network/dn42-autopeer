@@ -58,7 +58,11 @@ class OIDCClient:
     @staticmethod
     def create_login_state() -> dict[str, str]:
         verifier = secrets.token_urlsafe(48)
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+            .rstrip(b"=")
+            .decode()
+        )
         return {
             "state": secrets.token_urlsafe(32),
             "nonce": secrets.token_urlsafe(32),
@@ -66,7 +70,9 @@ class OIDCClient:
             "challenge": challenge,
         }
 
-    def authorization_url(self, redirect_uri: str, state: dict[str, str], client: httpx.Client) -> str:
+    def authorization_url(
+        self, redirect_uri: str, state: dict[str, str], client: httpx.Client
+    ) -> str:
         metadata = self.metadata(client)
         endpoint = metadata.get("authorization_endpoint")
         if not isinstance(endpoint, str):
@@ -83,12 +89,19 @@ class OIDCClient:
         }
         return f"{endpoint}?{urlencode(query)}"
 
-    def exchange(self, code: str, redirect_uri: str, verifier: str, client: httpx.Client) -> dict[str, object]:
+    def exchange(
+        self, code: str, redirect_uri: str, verifier: str, client: httpx.Client
+    ) -> dict[str, object]:
         metadata = self.metadata(client)
         endpoint = metadata.get("token_endpoint")
         if not isinstance(endpoint, str):
             raise ValueError("OIDC discovery has no token endpoint")
-        data = {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri, "code_verifier": verifier}
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "code_verifier": verifier,
+        }
         auth = (self.client_id, self.client_secret) if self.client_secret else None
         if auth is None:
             data["client_id"] = self.client_id
@@ -135,10 +148,15 @@ class OIDCClient:
         if claims.get("iss") != self.issuer:
             raise ValueError("invalid OIDC issuer")
         audience = claims.get("aud")
-        if not (audience == self.client_id or isinstance(audience, list) and self.client_id in audience):
+        if not (
+            audience == self.client_id or isinstance(audience, list) and self.client_id in audience
+        ):
             raise ValueError("invalid OIDC audience")
         if claims.get("nonce") != nonce:
             raise ValueError("invalid OIDC nonce")
         if not isinstance(claims.get("exp"), (int, float)) or claims["exp"] <= time.time():
             raise ValueError("OIDC ID token has expired")
-        return OIDCIdentity(_claim_asn(claims.get("dn42")), effective_name(claims.get("name") or claims.get("preferred_username")))
+        return OIDCIdentity(
+            _claim_asn(claims.get("dn42")),
+            effective_name(claims.get("name") or claims.get("preferred_username")),
+        )

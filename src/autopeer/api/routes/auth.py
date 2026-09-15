@@ -20,7 +20,9 @@ def _oidc_client(settings: Settings) -> OIDCClient:
         try:
             secret = settings.oidc_client_secret_file.read_text().strip()
         except OSError as exc:
-            raise HTTPException(status_code=503, detail="OIDC client secret is unavailable") from exc
+            raise HTTPException(
+                status_code=503, detail="OIDC client secret is unavailable"
+            ) from exc
     return OIDCClient(settings.oidc_issuer, settings.oidc_client_id, secret)
 
 
@@ -34,7 +36,9 @@ def login(request: Request, settings: Settings = Depends(get_settings)) -> Redir
     request.session["oidc_verifier"] = state["verifier"]
     try:
         with httpx.Client(timeout=10) as client:
-            url = _oidc_client(settings).authorization_url(settings.oidc_redirect_uri, state, client)
+            url = _oidc_client(settings).authorization_url(
+                settings.oidc_redirect_uri, state, client
+            )
     except Exception as exc:
         request.session.pop("oidc_state", None)
         request.session.pop("oidc_nonce", None)
