@@ -82,6 +82,7 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'
@@ -125,6 +126,7 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'
