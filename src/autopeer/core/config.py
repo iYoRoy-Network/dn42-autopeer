@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     git_author_name: str = "Autopeer Bot"
     git_author_email: str = "autopeer@localhost"
 
-    auth_mode: Literal["dev-header", "kioubit"] = "dev-header"
-    # Admin role is configured outside Kioubit: any authenticated ASN in this
+    auth_mode: Literal["dev-header", "oidc"] = "dev-header"
+    # Admin role is configured outside the identity provider: any authenticated ASN in this
     # comma-separated allowlist receives cross-ASN operator permissions.
     # NoDecode lets the validator accept a human-friendly CSV rather than only
     # pydantic-settings' default JSON array environment representation.
@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     session_secret: str | None = None
     kioubit_domain: str | None = None
     kioubit_public_key_file: Path | None = None
+    oidc_issuer: str = "https://dn42.g-load.eu"
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_client_secret_file: Path | None = None
+    oidc_redirect_uri: str | None = None
 
     metrics_targets_file: Path | None = None
     metrics_timeout_seconds: float = 5.0
@@ -94,17 +99,23 @@ class Settings(BaseSettings):
             ]
             if missing:
                 raise ValueError(f"agent integration requires readable files: {', '.join(missing)}")
-        if self.auth_mode != "kioubit":
+        if self.auth_mode == "oidc":
+            if not self.session_secret:
+                raise ValueError("AUTOPEER__SESSION_SECRET is required when auth_mode=oidc")
+            required = {
+                "AUTOPEER__OIDC_CLIENT_ID": self.oidc_client_id,
+                "AUTOPEER__OIDC_REDIRECT_URI": self.oidc_redirect_uri,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError(f"OIDC authentication requires: {', '.join(missing)}")
+            if self.oidc_client_secret_file and not self.oidc_client_secret_file.is_file():
+                raise ValueError("AUTOPEER__OIDC_CLIENT_SECRET_FILE must reference a readable file")
+            if self.oidc_client_secret is not None and not self.oidc_client_secret:
+                raise ValueError("AUTOPEER__OIDC_CLIENT_SECRET must not be empty")
             return self
-        if not self.session_secret:
-            raise ValueError("AUTOPEER__SESSION_SECRET is required when auth_mode=kioubit")
-        if not self.kioubit_domain:
-            raise ValueError("AUTOPEER__KIOUBIT_DOMAIN is required when auth_mode=kioubit")
-        if not self.kioubit_public_key_file:
-            raise ValueError("AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE is required when auth_mode=kioubit")
-        if not self.kioubit_public_key_file.is_file():
-            raise ValueError("AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE must reference a readable PEM file")
-        return self
+        if self.auth_mode == "oidc":
+            return self
 
     @property
     def resolved_targeted_peer_playbook(self) -> Path:

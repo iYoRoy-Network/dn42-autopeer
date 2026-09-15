@@ -117,10 +117,17 @@ npm install
 npm run dev
 ```
 
-Development auth uses headers. In production the Vue frontend uses Kioubit's documented
-`<kioubit-auth-btn>` form component. It submits `return=https://<frontend-origin>/api/v1/auth/callback`
-to Kioubit; the frontend proxy forwards the signed callback to the backend, which verifies
-signature/domain/freshness and stores the returned identity in the local session:
+Development auth uses headers. Production uses the DN42 OpenID Connect provider at
+`https://dn42.g-load.eu` with Authorization Code + PKCE. Register the exact public callback URL
+with the OAuth application, for example:
+
+```text
+https://autopeer.example.dn42/api/v1/auth/callback
+```
+
+The frontend only links to `/api/v1/auth/login`; the backend performs discovery, code exchange,
+ID-token validation, and extracts the ASN from the provider's `dn42` claim. Client credentials and
+tokens never reach the browser. The reverse proxy must forward `/api/v1/auth/*` to the backend.
 
 ```bash
 curl -H 'X-Autopeer-ASN: 4242423128' http://127.0.0.1:8080/api/v1/me
@@ -140,10 +147,13 @@ All settings use the `AUTOPEER__` prefix and `__` nested delimiter.
 | `AUTOPEER__ALLOW_DIRTY_REPO` | `false` | Permit committing in a dirty config checkout |
 | `AUTOPEER__GIT_AUTHOR_NAME` | `Autopeer Bot` | Commit author name for automated changes |
 | `AUTOPEER__GIT_AUTHOR_EMAIL` | `autopeer@localhost` | Commit author email for automated changes |
-| `AUTOPEER__AUTH_MODE` | `dev-header` | `dev-header` locally, `kioubit` in production |
-| `AUTOPEER__SESSION_SECRET` | unset | Required session-signing secret in Kioubit mode |
-| `AUTOPEER__KIOUBIT_DOMAIN` | unset | Domain expected in Kioubit's signed response |
-| `AUTOPEER__KIOUBIT_PUBLIC_KEY_FILE` | unset | PEM public key used to verify Kioubit signatures |
+| `AUTOPEER__AUTH_MODE` | `dev-header` | `dev-header` locally, `oidc` in production |
+| `AUTOPEER__SESSION_SECRET` | unset | Required session-signing secret in OIDC mode |
+| `AUTOPEER__OIDC_ISSUER` | `https://dn42.g-load.eu` | OIDC provider issuer |
+| `AUTOPEER__OIDC_CLIENT_ID` | unset | OAuth application client ID |
+| `AUTOPEER__OIDC_CLIENT_SECRET` | unset | OAuth client secret, preferably supplied through a secret file |
+| `AUTOPEER__OIDC_CLIENT_SECRET_FILE` | unset | File containing the OAuth client secret |
+| `AUTOPEER__OIDC_REDIRECT_URI` | unset | Exact callback URL registered with the provider |
 | `AUTOPEER__ADMIN_ASNS` | empty | Comma-separated admin ASN allowlist, for example `4242422024,4242423128` |
 | `AUTOPEER__METRICS_TARGETS_FILE` | unset | YAML map of exporter URLs |
 | `AUTOPEER__AGENT_ENABLED` | `false` | Send peer deployments to node agents instead of targeted Ansible |

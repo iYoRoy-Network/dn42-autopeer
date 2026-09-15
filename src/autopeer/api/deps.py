@@ -21,7 +21,7 @@ def get_current_principal(
     AUTOPEER__ADMIN_ASNS allowlist so multiple operator ASNs can be configured.
     """
     display_name: str | None = None
-    if settings.auth_mode == "kioubit":
+    if settings.auth_mode == "oidc":
         asn = request.session.get("principal_asn")
         if asn is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="login required")

@@ -1,5 +1,4 @@
 import { createApp } from 'vue'
-import './kioubit-auth-button.js'
 import 'mdui/mdui.css'
 import 'mdui/components/button.js'
 import 'mdui/components/card.js'

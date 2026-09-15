@@ -400,10 +400,6 @@ async function logout() {
   }
 }
 
-function kioubitReturnUrl() {
-  return `${window.location.origin}/api/v1/auth/callback`
-}
-
 onMounted(bootstrap)
 onUnmounted(() => clearInterval(pollTimer.value))
 </script>
@@ -431,7 +427,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
         <mdui-card class="login-card" variant="outlined">
           <h2>Sign in</h2>
           <p>Use Kioubit to verify your ASN and open a signed local session.</p>
-          <kioubit-auth-btn :return="kioubitReturnUrl()" token="" />
+          <a class="oidc-login-button" href="/api/v1/auth/login">Sign in with DN42 OAuth</a>
           <mdui-divider class="login-divider" />
           <p class="muted">Development only: send a local ASN header through the frontend proxy.</p>
           <mdui-text-field
