@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import secrets
 import time
 from dataclasses import dataclass
@@ -14,6 +15,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from autopeer.core.kioubit import effective_name
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,12 @@ def _b64decode(value: str) -> bytes:
 def _claim_asn(value: object) -> int:
     if isinstance(value, bool):
         raise ValueError("OIDC dn42 claim is not a valid ASN")
+    if isinstance(value, dict):
+        value = value.get("asn")
+    if isinstance(value, str):
+        value = value.strip()
+        if value.upper().startswith("AS"):
+            value = value[2:].strip()
     try:
         asn = int(value)
     except (TypeError, ValueError) as exc:
@@ -106,8 +115,11 @@ class OIDCClient:
         if auth is None:
             data["client_id"] = self.client_id
         response = client.post(endpoint, data=data, auth=auth)
+        logger.debug("OIDC token endpoint response: status=%s", response.status_code)
         response.raise_for_status()
         token = response.json()
+        if isinstance(token, dict):
+            logger.debug("OIDC token response fields: %s", sorted(token))
         if not isinstance(token, dict) or not isinstance(token.get("id_token"), str):
             raise ValueError("OIDC token response has no ID token")
         return token
@@ -118,6 +130,19 @@ class OIDCClient:
             header = json.loads(_b64decode(header_raw))
             claims = json.loads(_b64decode(payload_raw))
             signature = _b64decode(signature_raw)
+            if isinstance(claims, dict):
+                logger.debug(
+                    "OIDC ID token claims: iss=%r aud_type=%s aud=%r nonce_present=%s exp=%r dn42=%r dn42_type=%s name=%r preferred_username=%r",
+                    claims.get("iss"),
+                    type(claims.get("aud")).__name__,
+                    claims.get("aud"),
+                    bool(claims.get("nonce")),
+                    claims.get("exp"),
+                    claims.get("dn42"),
+                    type(claims.get("dn42")).__name__,
+                    claims.get("name"),
+                    claims.get("preferred_username"),
+                )
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
             raise ValueError("OIDC ID token is malformed") from exc
         if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
