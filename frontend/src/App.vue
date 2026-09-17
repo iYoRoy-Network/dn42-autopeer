@@ -4,6 +4,7 @@ import { api, setDevAsn } from './api'
 
 const storedDevAsn = localStorage.getItem('autopeer-dev-asn') ?? ''
 const devAsn = ref(storedDevAsn)
+const showDevelopmentLogin = import.meta.env.DEV || import.meta.env.MODE === 'development'
 const activePage = ref('nodes')
 const currentUser = ref(null)
 const nodes = ref([])
@@ -426,17 +427,19 @@ onUnmounted(() => clearInterval(pollTimer.value))
 
         <mdui-card class="login-card" variant="outlined">
           <h2>Sign in</h2>
-          <p>Use Kioubit to verify your ASN and open a signed local session.</p>
+          <p>Sign in with DN42 OAuth to verify your ASN and open a secure local session.</p>
           <a class="oidc-login-button" href="/api/v1/auth/login">Sign in with DN42 OAuth</a>
-          <mdui-divider class="login-divider" />
-          <p class="muted">Development only: send a local ASN header through the frontend proxy.</p>
-          <mdui-text-field
-            label="Development ASN"
-            type="number"
-            :value="devAsn"
-            @input="devAsn = $event.target.value"
-          />
-          <mdui-button variant="text" full-width @click="applyDevIdentity">Use development identity</mdui-button>
+          <template v-if="showDevelopmentLogin">
+            <mdui-divider class="login-divider" />
+            <p class="muted">Development only: send a local ASN header through the frontend proxy.</p>
+            <mdui-text-field
+              label="Development ASN"
+              type="number"
+              :value="devAsn"
+              @input="devAsn = $event.target.value"
+            />
+            <mdui-button variant="text" full-width @click="applyDevIdentity">Use development identity</mdui-button>
+          </template>
         </mdui-card>
       </section>
     </template>
