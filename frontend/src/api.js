@@ -40,6 +40,7 @@ export const api = {
   peers: (node) => request(`/api/v1/nodes/${encodeURIComponent(node)}/peers`),
   adminPeers: (node) => request(`/api/v1/admin/nodes/${encodeURIComponent(node)}/peers`),
   status: () => request('/api/v1/me/peers/status'),
+  adminStatus: (asn) => request(`/api/v1/admin/peers/${encodeURIComponent(asn)}/status`),
   job: (jobId) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}`),
   createPeer: (node, payload) =>
     request(`/api/v1/nodes/${encodeURIComponent(node)}/peers`, {

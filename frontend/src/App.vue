@@ -42,6 +42,7 @@ setDevAsn(storedDevAsn)
 
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const statusByNode = computed(() => new Map(statuses.value.map((status) => [status.node, status])))
+const statusByPeer = computed(() => new Map(statuses.value.map((status) => [`${status.node}:${status.asn}`, status])))
 const sessionCount = computed(() => sessions.value.length)
 const onlineSessionCount = computed(
   () => sessions.value.filter((session) => statusForSession(session)?.bgp?.up).length,
@@ -83,8 +84,8 @@ function sessionsForNode(nodeId) {
 }
 
 function statusForSession(session) {
-  if (!currentUser.value || Number(session.peer.asn) !== Number(currentUser.value.asn)) return null
-  return statusByNode.value.get(session.node.id) ?? null
+  if (!currentUser.value) return null
+  return statusByPeer.value.get(`${session.node.id}:${session.peer.asn}`) ?? null
 }
 
 function formatBytes(value) {
@@ -167,7 +168,9 @@ async function loadStatus() {
   if (!currentUser.value) return
   loadingStatus.value = true
   try {
-    statuses.value = await api.status()
+    statuses.value = isAdmin.value
+      ? (await Promise.all(sessions.value.map((session) => api.adminStatus(session.peer.asn)))).flat()
+      : await api.status()
   } catch (requestError) {
     // Exporters are optional. Configuration views remain available without them.
     notice.value = requestError.message
