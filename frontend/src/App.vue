@@ -186,7 +186,8 @@ async function bootstrap() {
   try {
     currentUser.value = await api.currentUser()
     nodes.value = isAdmin.value ? await api.adminNodes() : await api.nodes()
-    await Promise.all([loadSessions(), loadStatus()])
+    await loadSessions()
+    await loadStatus()
   } catch (requestError) {
     if (requestError.status === 401) {
       currentUser.value = null
@@ -317,7 +318,8 @@ function watchJob(job) {
       pollTimer.value = null
       if (latest.status === 'succeeded') {
         notice.value = `Job ${latest.id} completed.`
-        await Promise.all([loadSessions(), loadStatus()])
+        await loadSessions()
+    await loadStatus()
       } else {
         error.value = latest.error || `Job ${latest.id} failed.`
       }
