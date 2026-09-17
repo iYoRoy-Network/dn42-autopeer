@@ -39,6 +39,7 @@ async def list_admin_nodes(
             }
         )
         for node in peer_service.list_nodes()
+        if node.peering_enabled
     ]
 
 
