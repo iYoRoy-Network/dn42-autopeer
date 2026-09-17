@@ -45,9 +45,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend
+      - name: Build production frontend
         working-directory: frontend
-        run: npm run build
+        run: npm run build -- --mode production
 
       - uses: actions/setup-go@v5
         with:

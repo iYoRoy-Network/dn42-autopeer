@@ -4,7 +4,7 @@ import { api, setDevAsn } from './api'
 
 const storedDevAsn = localStorage.getItem('autopeer-dev-asn') ?? ''
 const devAsn = ref(storedDevAsn)
-const showDevelopmentLogin = import.meta.env.DEV || import.meta.env.MODE === 'development'
+const showDevelopmentLogin = import.meta.env.MODE === 'development'
 const activePage = ref('nodes')
 const currentUser = ref(null)
 const nodes = ref([])
