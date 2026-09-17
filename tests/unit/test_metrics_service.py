@@ -74,9 +74,9 @@ async def test_status_uses_bird_and_wireguard_cache():
     client = FakeMetricsClient(
         {
             ("node01", "bird"): [
-                sample("dn42_peer_4242423128", 1),
-                sample("dn42_peer_4242423128", 11, "bird_protocol_prefix_import_count"),
-                sample("dn42_peer_4242423128", 7, "bird_protocol_prefix_export_count"),
+                sample("dn42_peer_4242423128_ipv4", 1),
+                sample("dn42_peer_4242423128_ipv6", 11, "bird_protocol_prefix_import_count"),
+                sample("dn42_peer_4242423128_ipv6", 7, "bird_protocol_prefix_export_count"),
             ],
             ("node01", "wireguard"): [
                 {

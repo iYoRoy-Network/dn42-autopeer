@@ -194,7 +194,7 @@ class MetricsService:
         has_imported_routes = False
         has_exported_routes = False
         for sample in samples:
-            if self._sample_protocol(sample) != protocol:
+            if self._peer_protocol(self._sample_protocol(sample)) != protocol:
                 continue
             metric_name = str(sample.get("name", ""))
             value = float(sample.get("value", 0.0))
