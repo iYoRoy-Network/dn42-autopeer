@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -10,6 +12,7 @@ from autopeer.core.oidc import OIDCClient
 from autopeer.core.security import Principal
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _oidc_client(settings: Settings) -> OIDCClient:
@@ -68,6 +71,7 @@ def callback(request: Request, settings: Settings = Depends(get_settings)) -> Re
                 token = oidc.exchange(code, settings.oidc_redirect_uri, verifier, client)
                 identity = oidc.verify_id_token(token["id_token"], nonce, client)
         except Exception as exc:
+            logger.warning("OIDC callback failed: %s", exc)
             raise HTTPException(status_code=401, detail="OIDC authentication failed") from exc
         request.session["principal_asn"] = identity.asn
         request.session["principal_display_name"] = identity.display_name
