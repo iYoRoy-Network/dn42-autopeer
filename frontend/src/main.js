@@ -21,5 +21,6 @@ import 'mdui/components/tabs.js'
 import 'mdui/components/text-field.js'
 import './styles.css'
 import App from './App.vue'
+import router from './router'
 
-createApp(App).mount('#app')
+createApp(App).use(router).mount('#app')

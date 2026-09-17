@@ -1,11 +1,19 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, setDevAsn } from './api'
+import router from './router'
 
 const storedDevAsn = localStorage.getItem('autopeer-dev-asn') ?? ''
 const devAsn = ref(storedDevAsn)
 const showDevelopmentLogin = import.meta.env.MODE === 'development'
-const activePage = ref('nodes')
+const route = useRoute()
+const activePage = computed(() => {
+  if (route.name?.includes('wizard') || route.name?.includes('create') || route.name?.includes('edit')) return 'wizard'
+  if (route.name?.includes('peer') && route.name !== 'peer-create' && route.name !== 'admin-peer-create') return 'session-detail'
+  if (route.name?.includes('sessions')) return 'sessions'
+  return 'nodes'
+})
 const currentUser = ref(null)
 const nodes = ref([])
 const sessions = ref([])
@@ -204,22 +212,22 @@ async function bootstrap() {
 
 function openCreate(node) {
   resetForm(null, node)
-  activePage.value = 'wizard'
+  router.push({ name: isAdmin.value ? 'admin-peer-create' : 'peer-create', params: { node: node.id } })
 }
 
 function openEdit(session) {
   activeSession.value = session
   resetForm(session)
-  activePage.value = 'wizard'
+  router.push({ name: isAdmin.value ? 'admin-peer-edit' : 'peer-edit', params: { node: session.node.id, asn: session.peer.asn } })
 }
 
 function openSessionDetails(session) {
   activeSession.value = session
-  activePage.value = 'session-detail'
+  router.push({ name: isAdmin.value ? 'admin-peer' : 'peer', params: { node: session.node.id, asn: session.peer.asn } })
 }
 
 function backToSessions() {
-  activePage.value = 'sessions'
+  router.push({ name: isAdmin.value ? 'admin-sessions' : 'sessions' })
   activeSession.value = null
 }
 
@@ -228,7 +236,7 @@ function previousWizardStep() {
 }
 
 function leaveWizard() {
-  activePage.value = form.mode === 'edit' ? 'session-detail' : 'nodes'
+  router.push({ name: form.mode === 'edit' ? (isAdmin.value ? 'admin-peer' : 'peer') : (isAdmin.value ? 'admin-node' : 'node'), params: form.mode === 'edit' ? { node: form.node, asn: form.asn } : { node: form.node } })
 }
 
 function wizardBack() {
@@ -358,7 +366,7 @@ async function saveSession() {
       : (isAdmin.value
         ? await api.patchAdminPeer(form.node, Number(form.asn), payload)
         : await api.patchPeer(form.node, Number(form.asn), payload))
-    activePage.value = form.mode === 'edit' ? 'session-detail' : 'sessions'
+    router.push({ name: form.mode === 'edit' ? (isAdmin.value ? 'admin-peer' : 'peer') : (isAdmin.value ? 'admin-sessions' : 'sessions'), params: form.mode === 'edit' ? { node: form.node, asn: form.asn } : {} })
     notice.value = `Queued ${job.kind.replace('_', ' ')} for AS${form.asn}.`
     watchJob(job)
   } catch (requestError) {
@@ -407,6 +415,27 @@ async function logout() {
 }
 
 onMounted(bootstrap)
+watch(() => route.params, async (params) => {
+  if (!currentUser.value || !params.node) return
+  try {
+    const node = nodes.value.find((item) => item.id === params.node)
+    if (params.asn) {
+      const peer = isAdmin.value ? await api.adminPeer(params.node, params.asn) : await api.getPeer(params.node, params.asn)
+      if (node) {
+        activeSession.value = { node, peer }
+        sessions.value = [...sessions.value.filter((session) => !(session.node.id === params.node && String(session.peer.asn) === String(params.asn))), { node, peer }]
+      }
+      return
+    }
+    const listPeers = isAdmin.value ? api.adminPeers : api.peers
+    const peerList = await listPeers(params.node)
+    if (node) {
+      sessions.value = [...sessions.value.filter((session) => session.node.id !== params.node), ...peerList.map((peer) => ({ node, peer }))]
+    }
+  } catch (requestError) {
+    if (requestError.status !== 404) error.value = requestError.message
+  }
+}, { deep: true })
 onUnmounted(() => clearInterval(pollTimer.value))
 </script>
 
@@ -451,15 +480,15 @@ onUnmounted(() => clearInterval(pollTimer.value))
 
     <template v-else>
       <header class="app-header">
-        <a class="wordmark" href="#" @click.prevent="activePage = 'nodes'">
+        <a class="wordmark" href="/" @click.prevent="router.push({ name: isAdmin ? 'admin-home' : 'home' })">
           <span class="wordmark-mark">↔</span>
           <span>iyoroynet <b>autopeer</b></span>
         </a>
         <nav v-if="activePage !== 'wizard'" class="header-tabs" aria-label="Primary sections">
-          <button :class="{ active: activePage === 'nodes' }" type="button" @click="activePage = 'nodes'">
+          <button :class="{ active: activePage === 'nodes' }" type="button" @click="router.push({ name: isAdmin ? 'admin-home' : 'home' })">
             All nodes <span>{{ nodes.length }}</span>
           </button>
-          <button :class="{ active: activePage === 'sessions' }" type="button" @click="activePage = 'sessions'">
+          <button :class="{ active: activePage === 'sessions' }" type="button" @click="router.push({ name: isAdmin ? 'admin-sessions' : 'sessions' })">
             My sessions <span>{{ sessionCount }}</span>
           </button>
         </nav>
@@ -689,7 +718,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
             </div>
             <div class="heading-actions">
               <mdui-button variant="outlined" :loading="loadingStatus" @click="loadStatus">Refresh status</mdui-button>
-              <mdui-button variant="filled" @click="activePage = 'nodes'">Add peering</mdui-button>
+              <mdui-button variant="filled" @click="router.push({ name: isAdmin ? 'admin-home' : 'home' })">Add peering</mdui-button>
             </div>
           </section>
 
@@ -723,7 +752,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
                   </div>
                 </div>
                 <div class="session-actions">
-                  <mdui-button variant="outlined" @click="openSessionDetails(session)">Details</mdui-button>
+                  <mdui-button variant="outlined" @click="router.push({ name: isAdmin ? 'admin-node' : 'node', params: { node: session.node.id } })">Details</mdui-button>
                   <mdui-button variant="text" @click="activeSession = session; deleteOpen = true">Delete</mdui-button>
                 </div>
               </article>
@@ -734,7 +763,7 @@ onUnmounted(() => clearInterval(pollTimer.value))
             <div class="empty-icon" aria-hidden="true">+</div>
             <h2>No peer sessions yet</h2>
             <p>Choose an available node to create your first WireGuard and BGP session.</p>
-            <mdui-button variant="filled" @click="activePage = 'nodes'">Browse nodes</mdui-button>
+            <mdui-button variant="filled" @click="router.push({ name: isAdmin ? 'admin-home' : 'home' })">Browse nodes</mdui-button>
           </section>
         </template>
 

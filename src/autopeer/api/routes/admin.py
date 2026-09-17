@@ -9,6 +9,7 @@ from autopeer.api.deps import (
     get_peer_service,
 )
 from autopeer.core.security import Principal
+from autopeer.domain.errors import NotFoundError
 from autopeer.domain.peer import PeerCreateRequest, PeerPatchRequest
 from autopeer.services.job_service import JobService
 from autopeer.services.metrics_service import MetricsService
@@ -61,6 +62,20 @@ def list_admin_peers(
 ):
     require_admin(principal)
     return peer_service.list_peers_for_principal(node, principal)
+
+
+@router.get("/admin/nodes/{node}/peers/{asn}")
+def get_admin_peer(
+    node: str,
+    asn: int,
+    principal: Principal = Depends(get_current_principal),
+    peer_service: PeerService = Depends(get_peer_service),
+):
+    require_admin(principal)
+    try:
+        return peer_service.get_peer(node, asn, principal)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/admin/nodes/{node}/peers/{asn}", status_code=status.HTTP_202_ACCEPTED)
