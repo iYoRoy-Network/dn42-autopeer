@@ -22,6 +22,13 @@ const emit = defineEmits<{
 
 const transportLabel = (mode?: string): string => (mode ? mode.replaceAll('_', ' ') : '—')
 
+const bgpState = (session: Session): 'established' | 'down' | 'unavailable' => {
+  const bgp = store.statusForSession(session)?.bgp
+  if (bgp?.up === true) return 'established'
+  if (bgp?.up === false) return 'down'
+  return 'unavailable'
+}
+
 const columns = computed<any[]>(() => [
   { title: t('session.node'), key: 'node', dataIndex: 'node' },
   { title: t('session.asn'), key: 'asn', dataIndex: 'asn' },
@@ -68,9 +75,10 @@ const columns = computed<any[]>(() => [
       </template>
 
       <template v-else-if="column.key === 'status'">
-        <a-tag v-if="store.statusForSession(record)?.bgp?.up" color="green">
+        <a-tag v-if="bgpState(record) === 'established'" color="green">
           {{ t('session.established') }}
         </a-tag>
+        <a-tag v-else-if="bgpState(record) === 'down'" color="red">{{ t('session.down') }}</a-tag>
         <a-tag v-else color="orange">{{ t('session.unavailable') }}</a-tag>
       </template>
 
@@ -145,6 +153,10 @@ const columns = computed<any[]>(() => [
 .cell-sub {
   color: rgba(0, 0, 0, 0.45);
   font-size: 12px;
+}
+
+.dark .cell-sub {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .cell-type {

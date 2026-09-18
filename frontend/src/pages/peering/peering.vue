@@ -90,7 +90,7 @@ const peerAddress = computed(() => {
 
         <a-form-item :label="t('wizard.capabilities')">
           <div class="capability">
-            <div>
+            <div class="cap-text">
               <b>{{ t('wizard.wireguard') }}</b>
               <span class="hint">{{ t('wizard.wireguardHint') }}</span>
             </div>
@@ -302,18 +302,25 @@ const peerAddress = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  width: 100%;
   padding: 12px 16px;
   border: 1px solid #91caff;
   border-radius: 8px;
   background: #e6f4ff;
 }
 
-.capability b,
-.capability span {
+.cap-text {
+  min-width: 0;
+}
+
+.cap-text b,
+.cap-text span {
   display: block;
 }
 
 .cap-check {
+  flex-shrink: 0;
   color: #1890ff;
   font-size: 18px;
 }

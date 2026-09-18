@@ -77,6 +77,7 @@ export default {
     edit: 'Edit',
     delete: 'Delete',
     established: 'Established',
+    down: 'Down',
     unavailable: 'Status unavailable',
     deleteConfirm: 'Remove this peer session?',
     deleteHint: 'This queues removal of both the WireGuard and BIRD parts of this peer session.',

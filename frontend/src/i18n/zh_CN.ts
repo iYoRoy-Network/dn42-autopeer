@@ -77,6 +77,7 @@ export default {
     edit: '编辑',
     delete: '删除',
     established: '已建立',
+    down: '已断开',
     unavailable: '状态不可用',
     deleteConfirm: '移除此对等会话？',
     deleteHint: '这将排队移除该对等会话的 WireGuard 与 BIRD 两部分。',

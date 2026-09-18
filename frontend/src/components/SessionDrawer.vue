@@ -19,6 +19,13 @@ const session = computed(() => store.activeSession.value)
 const status = computed(() => (session.value ? store.statusForSession(session.value) : undefined))
 
 const transportLabel = (mode?: string): string => (mode ? mode.replaceAll('_', ' ') : '—')
+
+const bgpLabel = computed(() => {
+  const up = status.value?.bgp?.up
+  if (up === true) return t('session.established')
+  if (up === false) return t('session.down')
+  return t('session.unavailable')
+})
 </script>
 
 <template>
@@ -73,10 +80,7 @@ const transportLabel = (mode?: string): string => (mode ? mode.replaceAll('_', '
 
       <a-row v-if="status" :gutter="[12, 12]" class="metrics">
         <a-col :span="8">
-          <a-statistic
-            :title="t('peer.bgpStatus')"
-            :value="status.bgp?.up ? t('session.established') : t('session.unavailable')"
-          />
+          <a-statistic :title="t('peer.bgpStatus')" :value="bgpLabel" />
         </a-col>
         <a-col :span="8">
           <a-statistic :title="t('peer.imported')" :value="status.bgp?.routes_imported ?? '—'" />

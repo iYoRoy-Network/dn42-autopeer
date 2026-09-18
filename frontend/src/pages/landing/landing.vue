@@ -64,15 +64,15 @@ const openNode = (node: NodeSummary) => {
                 <span class="stat-note">{{ (node.online_peer_count ?? 0) }} {{ t('nodes.online') }}</span>
               </a-col>
               <a-col :span="16">
-                <a-statistic
-                  :title="t('nodes.traffic')"
-                  :value="formatBytes(node.runtime_metrics?.rx_bytes)"
-                  :suffix="''"
-                />
-                <span class="stat-note">
-                  ↓ {{ formatRate(node.runtime_metrics?.rx_bytes_per_second) }}
-                  · ↑ {{ formatRate(node.runtime_metrics?.tx_bytes_per_second) }}
-                </span>
+                <div class="traffic">
+                  <span class="traffic-label">{{ t('nodes.traffic') }}</span>
+                  <span class="traffic-value">↓ {{ formatBytes(node.runtime_metrics?.rx_bytes) }}</span>
+                  <span class="traffic-value">↑ {{ formatBytes(node.runtime_metrics?.tx_bytes) }}</span>
+                  <span class="stat-note">
+                    ↓ {{ formatRate(node.runtime_metrics?.rx_bytes_per_second) }}
+                    · ↑ {{ formatRate(node.runtime_metrics?.tx_bytes_per_second) }}
+                  </span>
+                </div>
               </a-col>
             </a-row>
 
@@ -174,6 +174,20 @@ const openNode = (node: NodeSummary) => {
   font-size: 12px;
 }
 
+.traffic-label {
+  display: block;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.traffic-value {
+  display: block;
+  font-size: 20px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
 .node-actions {
   display: flex;
   gap: 8px;
@@ -181,7 +195,8 @@ const openNode = (node: NodeSummary) => {
 
 .dark .subtitle,
 .dark .node-sub,
-.dark .stat-note {
+.dark .stat-note,
+.dark .traffic-label {
   color: rgba(255, 255, 255, 0.55);
 }
 </style>
