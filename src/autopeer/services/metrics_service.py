@@ -136,6 +136,13 @@ class MetricsService:
             )
         return statuses
 
+    def statuses_for_asns(self, asns: set[int]) -> list[PeerStatus]:
+        """Return peer status for every requested ASN in a single pass."""
+        statuses: list[PeerStatus] = []
+        for asn in sorted(asns):
+            statuses.extend(self.status_for_asn(asn))
+        return statuses
+
     def _samples_for(self, node: str, kind: str) -> list[dict[str, Any]]:
         snapshot = self._snapshots.get((node, kind))
         if snapshot is None or snapshot.error is not None:

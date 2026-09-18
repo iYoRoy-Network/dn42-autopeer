@@ -44,6 +44,21 @@ async def list_admin_nodes(
     ]
 
 
+@router.get("/admin/peers/status")
+def admin_all_peer_status(
+    principal: Principal = Depends(get_current_principal),
+    peer_service: PeerService = Depends(get_peer_service),
+    metrics: MetricsService = Depends(get_metrics_service),
+):
+    require_admin(principal)
+    asns = {
+        peer.asn
+        for node in peer_service.list_nodes()
+        for peer in peer_service.list_peers_for_principal(node.id, principal)
+    }
+    return metrics.statuses_for_asns(asns)
+
+
 @router.get("/admin/peers/{asn}/status")
 def admin_peer_status(
     asn: int,

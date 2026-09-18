@@ -209,6 +209,7 @@ export const api = {
   status: () => request<PeerStatus[]>('/api/v1/me/peers/status'),
   adminStatus: (asn: number | string) =>
     request<PeerStatus[]>(`/api/v1/admin/peers/${encodeURIComponent(asn)}/status`),
+  adminAllStatus: () => request<PeerStatus[]>('/api/v1/admin/peers/status'),
 
   job: (jobId: string) => request<JobRecord>(`/api/v1/jobs/${encodeURIComponent(jobId)}`),
 

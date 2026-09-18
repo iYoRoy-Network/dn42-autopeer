@@ -1,7 +1,8 @@
 import pytest
 from fastapi import HTTPException
+from types import SimpleNamespace
 
-from autopeer.api.routes.admin import get_admin_peer
+from autopeer.api.routes.admin import admin_all_peer_status, get_admin_peer
 from autopeer.core.security import Principal
 from autopeer.domain.errors import NotFoundError
 
@@ -47,3 +48,49 @@ def test_get_admin_peer_maps_not_found_to_404():
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "peer not found"
+
+
+class FakeListPeerService:
+    def __init__(self, peers_by_node):
+        self.peers_by_node = peers_by_node
+
+    def list_nodes(self):
+        return [SimpleNamespace(id=node) for node in self.peers_by_node]
+
+    def list_peers_for_principal(self, node, principal):
+        return self.peers_by_node[node]
+
+
+class FakeBatchMetricsService:
+    def __init__(self):
+        self.calls = []
+
+    def statuses_for_asns(self, asns):
+        self.calls.append(set(asns))
+        return [{"asn": asn} for asn in sorted(asns)]
+
+
+def test_admin_all_peer_status_requires_admin():
+    metrics = FakeBatchMetricsService()
+
+    with pytest.raises(HTTPException) as exc_info:
+        admin_all_peer_status(Principal(asn=4242420002), FakeListPeerService({}), metrics)
+
+    assert exc_info.value.status_code == 403
+    assert metrics.calls == []
+
+
+def test_admin_all_peer_status_collects_asns_and_delegates():
+    principal = Principal(asn=4242420001, role="admin")
+    peers = FakeListPeerService(
+        {
+            "fra01": [SimpleNamespace(asn=4242420002), SimpleNamespace(asn=4242420003)],
+            "hkg01": [SimpleNamespace(asn=4242420002)],
+        }
+    )
+    metrics = FakeBatchMetricsService()
+
+    result = admin_all_peer_status(principal, peers, metrics)
+
+    assert metrics.calls == [{4242420002, 4242420003}]
+    assert [item["asn"] for item in result] == [4242420002, 4242420003]

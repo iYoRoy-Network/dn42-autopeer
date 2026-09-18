@@ -200,9 +200,7 @@ async function loadStatus(): Promise<void> {
   if (!currentUser.value) return
   loadingStatus.value = true
   try {
-    statuses.value = isAdmin.value
-      ? (await Promise.all(sessions.value.map((s) => api.adminStatus(s.peer.asn)))).flat()
-      : await api.status()
+    statuses.value = isAdmin.value ? await api.adminAllStatus() : await api.status()
   } catch (requestError) {
     statuses.value = []
     notice.value = (requestError as Error).message
