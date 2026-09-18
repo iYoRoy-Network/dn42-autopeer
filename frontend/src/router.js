@@ -1,24 +1,33 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { api } from './api'
 
+const lazy = (path) => () => import(path)
+
 const routes = [
-  { path: '/login', name: 'login', meta: { public: true } },
-  { path: '/', name: 'home', meta: { area: 'user' } },
-  { path: '/nodes/:node', name: 'node', meta: { area: 'user' } },
-  { path: '/nodes/:node/peers/new', name: 'peer-create', meta: { area: 'user' } },
-  { path: '/nodes/:node/peers/:asn/edit', name: 'peer-edit', meta: { area: 'user' } },
-  { path: '/nodes/:node/peers/:asn', name: 'peer', meta: { area: 'user' } },
-  { path: '/sessions', name: 'sessions', meta: { area: 'user' } },
-  { path: '/admin', name: 'admin-home', meta: { area: 'admin', admin: true } },
-  { path: '/admin/nodes/:node', name: 'admin-node', meta: { area: 'admin', admin: true } },
-  { path: '/admin/nodes/:node/peers/new', name: 'admin-peer-create', meta: { area: 'admin', admin: true } },
-  { path: '/admin/nodes/:node/peers/:asn/edit', name: 'admin-peer-edit', meta: { area: 'admin', admin: true } },
-  { path: '/admin/nodes/:node/peers/:asn', name: 'admin-peer', meta: { area: 'admin', admin: true } },
-  { path: '/admin/sessions', name: 'admin-sessions', meta: { area: 'admin', admin: true } },
+  { path: '/login', name: 'login', component: lazy('./pages/LoginPage.vue'), meta: { public: true } },
+  { path: '/', name: 'home', component: lazy('./pages/home/HomePage.vue'), meta: { area: 'user' } },
+  { path: '/nodes/:node', name: 'node', component: lazy('./pages/nodes/NodePage.vue'), meta: { area: 'user' } },
+  { path: '/nodes/:node/peers/new', name: 'peer-create', component: lazy('./pages/peers/PeerWizardPage.vue'), meta: { area: 'user' } },
+  { path: '/nodes/:node/peers/:asn/edit', name: 'peer-edit', component: lazy('./pages/peers/PeerWizardPage.vue'), meta: { area: 'user' } },
+  { path: '/nodes/:node/peers/:asn', name: 'peer', component: lazy('./pages/peers/PeerPage.vue'), meta: { area: 'user' } },
+  { path: '/sessions', name: 'sessions', component: lazy('./pages/sessions/SessionsPage.vue'), meta: { area: 'user' } },
+  { path: '/admin', name: 'admin-home', component: lazy('./pages/admin/AdminPage.vue'), meta: { area: 'admin', admin: true } },
+  { path: '/admin/nodes/:node', name: 'admin-node', component: lazy('./pages/nodes/NodePage.vue'), meta: { area: 'admin', admin: true } },
+  { path: '/admin/nodes/:node/peers/new', name: 'admin-peer-create', component: lazy('./pages/peers/PeerWizardPage.vue'), meta: { area: 'admin', admin: true } },
+  { path: '/admin/nodes/:node/peers/:asn/edit', name: 'admin-peer-edit', component: lazy('./pages/peers/PeerWizardPage.vue'), meta: { area: 'admin', admin: true } },
+  { path: '/admin/nodes/:node/peers/:asn', name: 'admin-peer', component: lazy('./pages/peers/PeerPage.vue'), meta: { area: 'admin', admin: true } },
+  { path: '/admin/sessions', name: 'admin-sessions', component: lazy('./pages/sessions/SessionsPage.vue'), meta: { area: 'admin', admin: true } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
-export const router = createRouter({ history: createWebHistory(), routes })
+export const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0, behavior: 'smooth' }
+  },
+})
 
 let identityPromise
 router.beforeEach(async (to) => {

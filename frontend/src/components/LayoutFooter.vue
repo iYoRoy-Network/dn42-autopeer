@@ -1,0 +1,1 @@
+<template><footer class="app-footer"><span>iyoroynet autopeer</span><span>WireGuard and BGP control plane</span></footer></template>

@@ -1,0 +1,5 @@
+<script setup>
+import { ref } from 'vue'; import { useAutopeer } from '../state/autopeer';
+const s=useAutopeer(),asn=ref(''); const dev=import.meta.env.MODE==='development';
+</script>
+<template><section class="login-shell" aria-labelledby="login-title"><div class="brand-lockup"><div class="brand-mark">↔</div><div><p class="eyebrow">DN42 CONTROL PLANE</p><h1 id="login-title">iyoroynet autopeer</h1><p>Manage your WireGuard and BGP peer sessions from one control plane.</p></div></div><mdui-card class="login-card" variant="outlined"><h2>Sign in</h2><p>Sign in with DN42 OAuth to verify your ASN.</p><a class="oidc-login-button" href="/api/v1/auth/login">Sign in with DN42 OAuth</a><template v-if="dev"><mdui-divider class="login-divider"/><mdui-text-field label="Development ASN" type="number" :value="asn" @input="asn=$event.target.value"/><mdui-button variant="text" full-width @click="s.applyDevIdentity(asn)">Use development identity</mdui-button></template></mdui-card></section></template>
