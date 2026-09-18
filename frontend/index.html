@@ -2,12 +2,87 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
     <meta name="theme-color" content="#006a6a" />
     <title>iyoroynet autopeer</title>
+    <meta
+      name="description"
+      content="iyoroynet autopeer — WireGuard and BGP peering control plane."
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #app {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+          Arial, 'Noto Sans', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .initial-loading {
+        position: fixed;
+        inset: 0;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 9999;
+        transition: opacity 0.5s ease-out;
+      }
+      .initial-loading.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #1890ff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .loading-text {
+        font-size: 16px;
+        color: #666;
+        font-weight: 500;
+      }
+      @media (prefers-color-scheme: dark) {
+        .initial-loading {
+          background: linear-gradient(135deg, #1a1a1a 0%, #2d3748 100%);
+        }
+        .loading-text {
+          color: #ccc;
+        }
+        .loading-spinner {
+          border-color: #333;
+          border-top-color: #1890ff;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="initial-loading" class="initial-loading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading iyoroynet autopeer…</div>
+    </div>
     <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

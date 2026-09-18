@@ -13,6 +13,8 @@ htmlcov/
 *.local.*
 data/
 workspace/
+*.sqlite3
+*.db
 
 # frontend
 frontend/node_modules/

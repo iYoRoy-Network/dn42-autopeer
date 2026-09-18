@@ -54,10 +54,12 @@ tests/            unit/integration tests
 
 ## Frontend
 
-The repository includes a Vue 3 + Vite frontend using [mdui](https://www.mdui.org/) web components
-under `frontend/`. It supports Kioubit login, development-header login, node/peer selection, peer
-create/edit/delete jobs, job polling, and exporter-derived session status cards. mdui works directly
-with Vue because its components are standard web components.
+The repository includes a Vue 3 + TypeScript frontend under `frontend/`, built with
+[Ant Design Vue](https://antdv.com/), `vue-i18n` (English + Simplified Chinese), `vue-router`, and
+`dayjs`. It supports DN42 OIDC login (plus development-header login in dev builds), node browsing,
+per-node session tables with view/edit/delete actions, a three-step peer wizard, and job polling.
+The layout and visual style are inspired by the iEdon-Net Auto Peering frontend (see
+[acknowledgments](#acknowledgments)).
 
 Run both services with Docker Compose:
 
@@ -195,3 +197,16 @@ nodes:
 - `GET /api/v1/me/peers/status` exporter-derived peer status for current ASN
 
 Mutating endpoints enqueue jobs; they do not run Ansible in the HTTP request path.
+
+## Acknowledgments
+
+The frontend's layout, page structure, and visual style are inspired by the
+[iEdon-Net Auto Peering](https://iedon.net) frontend (GitHub: `iedon-net/iedon-net-frontend`),
+which is licensed under [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html). We thank the iEdon-Net
+maintainers for making their work public. This project's frontend code is a fresh implementation for
+the iyoroynet-autopeer API; attribution is included in the site footer and in
+`frontend/src/config.ts`.
+
+> **Note on licensing:** this repository does not currently declare a license. If the frontend is
+> distributed as a derivative of the GPL-3.0 iEdon-Net frontend, the combined work must be licensed
+> under GPL-3.0-compatible terms. Please confirm the intended license before publishing.
