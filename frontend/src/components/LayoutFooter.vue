@@ -11,14 +11,13 @@ const currentYear = new Date().getFullYear()
   <a-layout-footer id="footer" :class="themeName">
     <p class="mono">{{ t('footer.tagline') }}</p>
     <p class="mono credit">
-      {{ t('footer.credit') }} ·
+      {{ t('footer.credit') }}
       <a :href="config.credit.url" target="_blank" rel="noopener">{{ config.credit.name }}</a>
-      ({{ config.credit.license }})
     </p>
     <p class="mono">
       © {{ currentYear }} ·
       <a href="https://dn42.dev" target="_blank" rel="noopener">{{ t('footer.participant') }}</a>
-      · iyoroynet autopeer (Frontend v{{ config.version }})
+      · iYoRoy Network autopeer (Frontend v{{ config.version }})
     </p>
   </a-layout-footer>
 </template>

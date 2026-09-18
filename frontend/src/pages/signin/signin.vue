@@ -17,7 +17,7 @@ const dev = import.meta.env.MODE === 'development'
       <div class="brand-mark">↔</div>
       <div>
         <p class="eyebrow">{{ t('signin.eyebrow') }}</p>
-        <h1>iyoroynet autopeer</h1>
+        <h1>iYoRoy Network autopeer</h1>
         <p class="subtitle">{{ t('signin.subtitle') }}</p>
       </div>
     </div>

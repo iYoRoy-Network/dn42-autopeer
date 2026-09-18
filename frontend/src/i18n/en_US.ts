@@ -9,7 +9,7 @@ export default {
   },
   footer: {
     tagline: 'WireGuard and BGP peering control plane',
-    credit: 'Frontend style inspired by iEdon-Net Auto Peering (GPL-3.0)',
+    credit: 'Frontend style inspired by',
     participant: 'DN42 Participant',
   },
   common: {

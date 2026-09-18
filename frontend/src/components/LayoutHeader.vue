@@ -68,7 +68,7 @@ const isAdmin = computed(() => store.isAdmin.value)
   <a-layout-header id="header" :class="themeName">
     <div class="logo" @click="goHome">
       <span class="logo-mark">↔</span>
-      <span class="logo-text">iyoroynet <b>autopeer</b></span>
+      <span class="logo-text">iYoRoy Network <b>autopeer</b></span>
     </div>
 
     <div class="menus">

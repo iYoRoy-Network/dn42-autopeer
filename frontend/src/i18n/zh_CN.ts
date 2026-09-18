@@ -9,7 +9,7 @@ export default {
   },
   footer: {
     tagline: 'WireGuard 与 BGP 对等控制平面',
-    credit: '前端样式参考 iEdon-Net Auto Peering（GPL-3.0）',
+    credit: '前端样式参考',
     participant: 'DN42 参与者',
   },
   common: {
