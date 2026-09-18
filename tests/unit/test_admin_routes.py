@@ -1,6 +1,7 @@
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
-from types import SimpleNamespace
 
 from autopeer.api.routes.admin import admin_all_peer_status, get_admin_peer
 from autopeer.core.security import Principal
