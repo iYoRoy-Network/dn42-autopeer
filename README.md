@@ -48,7 +48,7 @@ src/autopeer/
   domain/         Pydantic domain models and validators
   services/       peer, job, worker and metrics orchestration
   db/             SQLite job store
-frontend/         Vue 3 + Vite + mdui peer/admin UI
+frontend/         Vue 3 + TypeScript + Ant Design Vue peer/admin UI
 tests/            unit/integration tests
 ```
 
@@ -71,7 +71,7 @@ The backend image can also run independently after mounting a writable config re
 
 ```bash
 docker build -t iyoroynet-autopeer .
-docker run --rm -p 8080:8080 \
+docker run --rm -p 8082:8082 \
   -v /path/to/Bird2-Configuration:/config-repo \
   -v autopeer-data:/data/autopeer \
   --env-file .env \
@@ -89,7 +89,7 @@ ghcr.io/<owner>/<repository>-frontend
 The frontend image only serves the compiled static files. Route `/api/*`, `/healthz`, and `/readyz`
 through your own reverse proxy to the backend service. For local frontend-only development, run
 `npm install && npm run dev` from `frontend/`; its Vite proxy target defaults to
-`http://localhost:8080`.
+`http://localhost:8082`.
 
 ## Development
 
@@ -99,7 +99,7 @@ Recommended local setup with `uv`:
 uv venv
 uv pip install -e '.[dev]'
 cp .env.example .env
-uvicorn autopeer.main:app --reload --host 0.0.0.0 --port 8080
+uvicorn autopeer.main:app --reload --host 0.0.0.0 --port 8082
 ```
 
 Without `uv`:
@@ -132,7 +132,7 @@ ID-token validation, and extracts the ASN from the provider's `dn42` claim. Clie
 tokens never reach the browser. The reverse proxy must forward `/api/v1/auth/*` to the backend.
 
 ```bash
-curl -H 'X-Autopeer-ASN: 4242423128' http://127.0.0.1:8080/api/v1/me
+curl -H 'X-Autopeer-ASN: 4242423128' http://127.0.0.1:8082/api/v1/me
 ```
 
 ## Key environment variables

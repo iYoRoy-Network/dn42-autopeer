@@ -3,7 +3,7 @@ services:
     build: .
     image: ghcr.io/iyoroy-network/dn42-autopeer-backend:main
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8082:8082"
     env_file:
       - .env
     volumes:
