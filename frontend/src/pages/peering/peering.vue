@@ -310,6 +310,11 @@ const peerAddress = computed(() => {
   background: #e6f4ff;
 }
 
+.dark .capability {
+  border-color: rgba(24, 144, 255, 0.45);
+  background: rgba(24, 144, 255, 0.15);
+}
+
 .cap-text {
   min-width: 0;
 }
