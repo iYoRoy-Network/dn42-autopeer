@@ -201,12 +201,5 @@ Mutating endpoints enqueue jobs; they do not run Ansible in the HTTP request pat
 ## Acknowledgments
 
 The frontend's layout, page structure, and visual style are inspired by the
-[iEdon-Net Auto Peering](https://iedon.net) frontend (GitHub: `iedon-net/iedon-net-frontend`),
-which is licensed under [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html). We thank the iEdon-Net
-maintainers for making their work public. This project's frontend code is a fresh implementation for
-the iyoroynet-autopeer API; attribution is included in the site footer and in
-`frontend/src/config.ts`.
-
-> **Note on licensing:** this repository does not currently declare a license. If the frontend is
-> distributed as a derivative of the GPL-3.0 iEdon-Net frontend, the combined work must be licensed
-> under GPL-3.0-compatible terms. Please confirm the intended license before publishing.
+[iEdon-Net Auto Peering](https://iedon.net) frontend (GitHub: `iedon-net/iedon-net-frontend`).
+Attribution is also included in the site footer and in `frontend/src/config.ts`.
