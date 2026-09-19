@@ -118,6 +118,7 @@ export default {
     wireguardHint: '本对等会话的加密传输。',
     bgpNote: 'BGP 路由交换选项将在下一步配置。',
     peerAsn: '对端 ASN',
+    peerAsnHint: '默认为你自己的 ASN。仅在替其他 ASN 创建会话时才需要修改。',
     step2Title: '接口与传输',
     step2Hint: '选择 BGP 路由交换方式，然后填写所需邻居地址。',
     publicKey: '公钥',

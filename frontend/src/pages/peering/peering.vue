@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowLeftOutlined, CheckOutlined } from '@ant-design/icons-vue'
 import { useAutopeer } from '@/store'
 import { nodeTitle } from '@/common/helper'
+import { DN42_AUTOPEER_ASN_MAX, DN42_AUTOPEER_ASN_MIN } from '@/common/packetHandler'
 import type { NodeSummary } from '@/common/packetHandler'
 
 const { t } = useI18n()
@@ -12,16 +13,26 @@ const route = useRoute()
 const router = useRouter()
 const store = useAutopeer()
 
-onMounted(async () => {
-  if (!store.currentUser.value) await store.bootstrap()
+// Resolve the wizard's state from the current route. Called both before and
+// after bootstrap: the form state is module-level, so it must be reset
+// synchronously on mount rather than only at the end of an async bootstrap.
+// Otherwise a slow or failed bootstrap leaves the previous visit's step number
+// and an empty form.node behind, which renders as a dead Confirm button.
+const initializeForm = () => {
   const node = store.nodes.value.find((n) => n.id === route.params.node)
-  if (route.params.asn) {
-    const existing = store.sessions.value.find(
-      (s) => s.node.id === route.params.node && String(s.peer.asn) === String(route.params.asn),
-    )
-    store.resetForm(existing || null, node || null)
-  } else {
-    store.resetForm(null, node || null)
+  const existing = route.params.asn
+    ? store.sessions.value.find(
+        (s) => s.node.id === route.params.node && String(s.peer.asn) === String(route.params.asn),
+      )
+    : null
+  store.resetForm(existing || null, node || null)
+}
+
+onMounted(async () => {
+  initializeForm()
+  if (!store.currentUser.value) {
+    await store.bootstrap()
+    initializeForm()
   }
 })
 
@@ -49,7 +60,14 @@ const back = () => {
 
 const submit = async () => {
   const ok = await store.saveSession()
-  if (ok) router.push({ name: 'node', params: { node: route.params.node } })
+  if (ok) {
+    router.push({ name: 'node', params: { node: route.params.node } })
+    return
+  }
+  // Failures are reported through the shared flash banner, which renders above
+  // the wizard. On step 3 that banner is scrolled out of view, so a rejected
+  // submission would otherwise look like the button did nothing at all.
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const peerAddress = computed(() => {
@@ -101,11 +119,13 @@ const peerAddress = computed(() => {
         <a-form-item v-if="isAdmin && !isEdit" :label="t('wizard.peerAsn')" required>
           <a-input-number
             v-model:value="store.form.asn"
-            :min="1"
-            :max="4294967295"
+            :min="DN42_AUTOPEER_ASN_MIN"
+            :max="DN42_AUTOPEER_ASN_MAX"
+            string-mode
             style="width: 100%"
             size="large"
           />
+          <p class="hint">{{ t('wizard.peerAsnHint') }}</p>
         </a-form-item>
       </a-form>
       <p class="hint">{{ t('wizard.bgpNote') }}</p>

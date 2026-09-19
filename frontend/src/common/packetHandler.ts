@@ -15,6 +15,28 @@ export class ApiError extends Error {
   }
 }
 
+// FastAPI reports request-validation failures as an array of error objects in
+// `detail`, while application errors use a plain string. Passing the array
+// straight to Error would stringify it to "[object Object]" and hide the field
+// that failed, so flatten it into something readable.
+function formatApiDetail(detail: unknown, status: number): string {
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const { loc, msg } = item as { loc?: unknown[]; msg?: unknown }
+        if (typeof msg !== 'string' || !msg) return null
+        // Drop the leading "body" segment that Pydantic prepends.
+        const path = Array.isArray(loc) ? loc.slice(1).join('.') : ''
+        return path ? `${path}: ${msg}` : msg
+      })
+      .filter((message): message is string => Boolean(message))
+    if (messages.length) return messages.join('; ')
+  }
+  return `Request failed with HTTP ${status}`
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -33,7 +55,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const contentType = response.headers.get('content-type') ?? ''
   const body = contentType.includes('application/json') ? await response.json() : null
   if (!response.ok) {
-    throw new ApiError(body?.detail ?? `Request failed with HTTP ${response.status}`, response.status)
+    throw new ApiError(formatApiDetail(body?.detail, response.status), response.status)
   }
   return body as T
 }
@@ -41,6 +63,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 // --- Domain types (mirror the backend Pydantic models) ---
 
 export type PrincipalRole = 'admin' | 'user'
+
+// Mirrors DN42_AUTOPEER_ASN_MIN/MAX in src/autopeer/domain/peer.py. The backend
+// rejects anything outside this range, but only inside the queued job, so the
+// wizard checks it up front instead of surfacing a failed job later.
+export const DN42_AUTOPEER_ASN_MIN = 4242420001
+export const DN42_AUTOPEER_ASN_MAX = 4242423999
 
 export interface Principal {
   asn: number

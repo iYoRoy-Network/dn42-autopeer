@@ -118,6 +118,7 @@ export default {
     wireguardHint: 'Encrypted transport for this peering session.',
     bgpNote: 'BGP route exchange options are configured in the next step.',
     peerAsn: 'Peer ASN',
+    peerAsnHint: 'Defaults to your own ASN. Change it only to create a session on behalf of another ASN.',
     step2Title: 'Interface and transport',
     step2Hint: 'Choose how BGP routes should be exchanged, then provide the required neighbor addresses.',
     publicKey: 'Public key',

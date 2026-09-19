@@ -266,7 +266,7 @@ class ConfigRepository:
             return [
                 {
                     "name": "mp-bgp",
-                    "transport": transport,
+                    "transport": transport.value,
                     "remote_address": address,
                     "interface": f"dn42_{asn}",
                 }
@@ -276,7 +276,7 @@ class ConfigRepository:
             sessions.append(
                 {
                     "name": "ipv4",
-                    "transport": BgpTransportMode.ipv4,
+                    "transport": BgpTransportMode.ipv4.value,
                     "remote_address": bgp.ipv4_address,
                 }
             )
@@ -292,7 +292,7 @@ class ConfigRepository:
             sessions.append(
                 {
                     "name": "ipv6",
-                    "transport": transport,
+                    "transport": transport.value,
                     "remote_address": address,
                     "interface": f"dn42_{asn}",
                 }

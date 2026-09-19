@@ -1,5 +1,5 @@
 import { computed, reactive, ref } from 'vue'
-import { api, setDevAsn } from './common/packetHandler'
+import { api, setDevAsn, DN42_AUTOPEER_ASN_MAX, DN42_AUTOPEER_ASN_MIN } from './common/packetHandler'
 import type {
   JobRecord,
   NodeSummary,
@@ -13,11 +13,14 @@ import type {
 export interface PeerForm {
   mode: 'create' | 'edit'
   node: string
-  asn: string
+  // Bound to a-input-number, which emits null when the field is cleared rather
+  // than the empty string this field would otherwise hold.
+  asn: string | null
   contact: string
   publicKey: string
   endpoint: string
-  mtu: number
+  // Bound to a-input-number, which emits null once the field is cleared.
+  mtu: number | null
   mpBgp: boolean
   ipv4Enabled: boolean
   ipv6Enabled: boolean
@@ -88,7 +91,10 @@ function resetForm(session: Session | null = null, node: NodeSummary | null = nu
   const peer = session?.peer
   form.mode = peer ? 'edit' : 'create'
   form.node = session?.node.id ?? node?.id ?? ''
-  form.asn = peer ? String(peer.asn) : String(isAdmin.value ? '' : (currentUser.value?.asn ?? ''))
+  // Login already proves ASN ownership, so default to the signed-in ASN for
+  // every role. Administrators keep the field editable to create a session on
+  // behalf of an ASN that did not come through the web UI.
+  form.asn = peer ? String(peer.asn) : String(currentUser.value?.asn ?? '')
   form.contact = peer?.description ?? ''
   form.publicKey = peer?.wireguard_public_key ?? ''
   form.endpoint = peer?.wireguard_endpoint ?? ''
@@ -108,18 +114,88 @@ function resetForm(session: Session | null = null, node: NodeSummary | null = nu
   wizardStep.value = 1
 }
 
+// Mirrors canonical_endpoint() in src/autopeer/domain/peer.py: host:port, or
+// [ipv6]:port for IPv6 literals. The backend rejects anything else with a 422.
+function isEndpoint(value: string): boolean {
+  const text = value.trim()
+  if (!text) return false
+  let host: string
+  let port: string
+  if (text.startsWith('[')) {
+    const closing = text.indexOf(']')
+    if (closing <= 1 || text[closing + 1] !== ':') return false
+    host = text.slice(1, closing)
+    port = text.slice(closing + 2)
+  } else {
+    const parts = text.split(':')
+    if (parts.length !== 2) return false
+    ;[host, port] = parts
+  }
+  if (!host || !/^\d+$/.test(port)) return false
+  const portNumber = Number(port)
+  return portNumber >= 1 && portNumber <= 65535
+}
+
+// Deliberately validates address *shape* only. Python's ipaddress.is_global()
+// is a blocklist over IANA's special-purpose registry rather than a 2000::/3
+// allowlist, so mirroring it in JS risks false rejections. The backend stays
+// authoritative on global-unicast policy and now names the field when it 422s.
+function isIPv6Literal(value: string): boolean {
+  const text = value.trim()
+  if (!/^[0-9a-fA-F:]+$/.test(text)) return false
+  const compression = text.indexOf('::')
+  if (compression !== text.lastIndexOf('::')) return false // "::" may appear once
+  if (compression === -1) {
+    const groups = text.split(':')
+    return groups.length === 8 && groups.every((g) => /^[0-9a-fA-F]{1,4}$/.test(g))
+  }
+  const head = text.slice(0, compression)
+  const tail = text.slice(compression + 2)
+  const headGroups = head ? head.split(':') : []
+  const tailGroups = tail ? tail.split(':') : []
+  if (![...headGroups, ...tailGroups].every((g) => /^[0-9a-fA-F]{1,4}$/.test(g))) return false
+  return headGroups.length + tailGroups.length < 8
+}
+
+// fe80::/10 is the IPv6 link-local range, i.e. first hextet 0xfe80..0xfebf.
+function isLinkLocalV6(value: string): boolean {
+  const first = parseInt(value.trim().toLowerCase().split(':')[0] || '0', 16)
+  return first >= 0xfe80 && first <= 0xfebf
+}
+
+function ipKind(value: string): 'v4' | 'v6' | 'v6-link-local' | 'invalid' {
+  const text = value.trim()
+  if (!text) return 'invalid'
+  if (text.includes(':')) {
+    if (!isIPv6Literal(text)) return 'invalid'
+    return isLinkLocalV6(text) ? 'v6-link-local' : 'v6'
+  }
+  const parts = text.split('.')
+  if (parts.length !== 4) return 'invalid'
+  if (!parts.every((part) => /^\d+$/.test(part) && Number(part) <= 255)) return 'invalid'
+  return 'v4'
+}
+
 function validate(step: number): string | null {
   if (step === 1 && !form.contact.trim()) return 'Contact information is required.'
+  if (step === 1 && isAdmin.value && form.mode === 'create') {
+    if (!formAsn()) return 'Peer ASN is required.'
+    const asn = Number(formAsn())
+    if (asn < DN42_AUTOPEER_ASN_MIN || asn > DN42_AUTOPEER_ASN_MAX)
+      return `Peer ASN must be within ${DN42_AUTOPEER_ASN_MIN}..${DN42_AUTOPEER_ASN_MAX}.`
+  }
   if (step === 2 && (!form.publicKey.trim() || !form.endpoint.trim()))
     return 'WireGuard connection details are required.'
+  if (step === 2 && !isEndpoint(form.endpoint))
+    return 'The WireGuard endpoint must be a host and port, for example peer.example:22024.'
   if (step === 2 && !form.mpBgp && !form.ipv4Enabled && !form.ipv6Enabled)
     return 'Enable IPv4, IPv6, or MP-BGP.'
-  if (step === 2 && form.ipv4Enabled && !form.mpBgp && !form.ipv4Address.trim())
+  if (step === 2 && form.ipv4Enabled && !form.mpBgp && ipKind(form.ipv4Address) !== 'v4')
     return 'An IPv4 address is required.'
-  if (step === 2 && form.ipv6Enabled && form.ipv6Mode === 'global' && !form.ipv6Address.trim())
-    return 'An IPv6 global address is required.'
-  if (step === 2 && form.ipv6Enabled && form.ipv6Mode === 'link_local' && !form.ipv6LinkLocalAddress.trim())
-    return 'An IPv6 link-local address is required.'
+  if (step === 2 && form.ipv6Enabled && form.ipv6Mode === 'global' && !['v6', 'v6-link-local'].includes(ipKind(form.ipv6Address)))
+    return 'An IPv6 address is required.'
+  if (step === 2 && form.ipv6Enabled && form.ipv6Mode === 'link_local' && ipKind(form.ipv6LinkLocalAddress) !== 'v6-link-local')
+    return 'An IPv6 link-local address (fe80::/10) is required.'
   return null
 }
 
@@ -162,9 +238,16 @@ function sessionModelLabel(): string {
 }
 
 function asRequestPayload(): PeerPayload {
+  // Number(null) is 0, which the backend rejects as mtu < 576. Fall back to the
+  // same default the form starts with when the field was cleared.
+  const mtu = Number(form.mtu)
   return {
     contact: form.contact,
-    wireguard: { public_key: form.publicKey, endpoint: form.endpoint, mtu: Number(form.mtu) },
+    wireguard: {
+      public_key: form.publicKey,
+      endpoint: form.endpoint,
+      mtu: Number.isFinite(mtu) && mtu >= 576 && mtu <= 9000 ? mtu : 1420,
+    },
     bgp: {
       mp_bgp: form.mpBgp,
       ipv4_enabled: form.ipv4Enabled,
@@ -257,14 +340,23 @@ function watchJob(job: JobRecord): void {
   }, 1500)
 }
 
+// a-input-number hands back a number (or null once cleared) even though the form
+// models the field as a string, so normalise before treating it as text.
+function formAsn(): string {
+  return String(form.asn ?? '').trim()
+}
+
 async function saveSession(): Promise<boolean> {
-  if (!form.node) return false
+  if (!form.node) {
+    error.value = 'No node is selected for this session. Reopen the wizard from a node.'
+    return false
+  }
   const message = validate(1) || validate(2)
   if (message) {
     error.value = message
     return false
   }
-  if (isAdmin.value && form.mode === 'create' && !form.asn.trim()) {
+  if (isAdmin.value && form.mode === 'create' && !formAsn()) {
     error.value = 'Peer ASN is required for an administrator-created session.'
     return false
   }
@@ -272,15 +364,16 @@ async function saveSession(): Promise<boolean> {
   error.value = ''
   try {
     const payload = asRequestPayload()
+    const asn = Number(formAsn())
     const job =
       form.mode === 'create'
         ? isAdmin.value
-          ? await api.createAdminPeer(form.node, Number(form.asn), payload)
+          ? await api.createAdminPeer(form.node, asn, payload)
           : await api.createPeer(form.node, payload)
         : isAdmin.value
-          ? await api.patchAdminPeer(form.node, Number(form.asn), payload)
-          : await api.patchPeer(form.node, Number(form.asn), payload)
-    notice.value = `Queued ${job.kind.replaceAll('_', ' ')} for AS${form.asn || currentUser.value?.asn}.`
+          ? await api.patchAdminPeer(form.node, asn, payload)
+          : await api.patchPeer(form.node, asn, payload)
+    notice.value = `Queued ${job.kind.replaceAll('_', ' ')} for AS${formAsn() || currentUser.value?.asn}.`
     watchJob(job)
     return true
   } catch (requestError) {
