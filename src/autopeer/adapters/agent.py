@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import secrets
+import ssl
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -57,8 +58,7 @@ class AgentClient:
                 str(self.settings.agent_client_key_file),
             )
         with httpx.Client(
-            verify=str(self.settings.agent_ca_file) if self.settings.agent_ca_file else True,
-            cert=cert,
+            verify=self._ssl_context(cert),
             timeout=self.settings.agent_timeout_seconds,
         ) as client:
             response = client.request(
@@ -72,6 +72,22 @@ class AgentClient:
         if not isinstance(result, dict):
             raise RuntimeError("agent returned a non-object response")
         return result
+
+    def _ssl_context(self, cert: tuple[str, str] | None) -> ssl.SSLContext:
+        """Build the TLS context for agent requests.
+
+        httpx returns early from create_ssl_context() when `verify` is a string
+        path, so a `cert=` tuple passed alongside it is silently discarded and
+        the handshake fails with "client didn't provide a certificate". Loading
+        both the CA and the client chain onto one context avoids that.
+        """
+        if self.settings.agent_ca_file:
+            context = ssl.create_default_context(cafile=str(self.settings.agent_ca_file))
+        else:
+            context = ssl.create_default_context()
+        if cert:
+            context.load_cert_chain(cert[0], cert[1])
+        return context
 
     @staticmethod
     def _load_signing_key(path: Path | None) -> Ed25519PrivateKey:
