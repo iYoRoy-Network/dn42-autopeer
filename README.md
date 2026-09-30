@@ -78,6 +78,17 @@ docker run --rm -p 8082:8082 \
   iyoroynet-autopeer
 ```
 
+The container runs as the unprivileged `autopeer` user (uid 10001), and a bind mount preserves the
+host ownership, so the checkout must be owned by that uid. Otherwise the backend can read it but
+fails with `permission denied` as soon as it writes a peer file (`ansible/host_vars/<node>/dn42-peers/`)
+or commits to the repository:
+
+```bash
+sudo chown -R 10001:10001 /path/to/Bird2-Configuration
+```
+
+The same uid needs to own any SSH key used when `AUTOPEER__GIT_PUSH_ENABLED=true`.
+
 GitHub Actions runs backend checks, frontend builds, and Go agent tests for pull requests. Pushes to `main`
 and `v*` tags also publish two GHCR images:
 

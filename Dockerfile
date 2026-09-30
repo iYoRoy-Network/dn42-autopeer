@@ -26,7 +26,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin autopeer \
     && mkdir -p /data/autopeer /config-repo \
-    && chown autopeer:autopeer /data/autopeer
+    && chown autopeer:autopeer /data/autopeer /config-repo
 
 WORKDIR /app
 COPY --from=builder /dist/*.whl /tmp/
