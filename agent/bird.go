@@ -18,11 +18,10 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest, config Con
 		}
 	}
 	if request.BGP.MPBGP {
-		neighbor := request.BGP.IPv6.Neighbor
-		if request.BGP.IPv6.LLA {
-			neighbor += fmt.Sprintf(" %% 'dn42_%d'", asn)
-		}
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d' from dnpeers {\n    neighbor %s as %d;\n    ipv4 {\n        extended next hop;\n    };\n};\n", asn, neighbor, asn)
+		content := fmt.Sprintf(
+			"protocol bgp 'dn42_peer_%d' from dnpeers {\n%s    neighbor %s as %d;\n    ipv4 {\n        extended next hop;\n    };\n};\n",
+			asn, birdDirect(*request.BGP.IPv6), birdNeighbor(asn, *request.BGP.IPv6), asn,
+		)
 		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d.conf", asn)), content, 0644)
 	}
 	if request.BGP.IPv4 != nil {
@@ -32,14 +31,33 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest, config Con
 		}
 	}
 	if request.BGP.IPv6 != nil {
-		neighbor := request.BGP.IPv6.Neighbor
-		if request.BGP.IPv6.LLA {
-			neighbor += fmt.Sprintf(" %% 'dn42_%d'", asn)
-		}
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n    neighbor %s as %d;\n    ipv6 {};\n};\n", asn, neighbor, asn)
+		content := fmt.Sprintf(
+			"protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n%s    neighbor %s as %d;\n    ipv6 {};\n};\n",
+			asn, birdDirect(*request.BGP.IPv6), birdNeighbor(asn, *request.BGP.IPv6), asn,
+		)
 		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v6.conf", asn)), content, 0644)
 	}
 	return nil
+}
+
+// birdNeighbor renders the neighbor clause, pinning a link-local address to the
+// WireGuard interface it arrives on.
+func birdNeighbor(asn int, ipv6 IPv6Request) string {
+	if ipv6.LLA {
+		return fmt.Sprintf("%s %% 'dn42_%d'", ipv6.Neighbor, asn)
+	}
+	return ipv6.Neighbor
+}
+
+// birdDirect pins a link-local session to direct mode. BIRD defaults every
+// session whose remote AS matches the local one to multihop, and link-local
+// addresses cannot be used with multihop at all, so a same-AS peer fails to
+// load without this.
+func birdDirect(ipv6 IPv6Request) string {
+	if ipv6.LLA {
+		return "    direct;\n"
+	}
+	return ""
 }
 
 func writeRootFile(path, content string, mode fs.FileMode) error {
