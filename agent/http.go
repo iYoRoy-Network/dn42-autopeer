@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -54,16 +55,7 @@ func (a *Agent) peer(w http.ResponseWriter, r *http.Request) {
 		err = a.removePeer(asn)
 	} else {
 		var request PeerRequest
-		decoder := json.NewDecoder(strings.NewReader(string(body)))
-		decoder.DisallowUnknownFields()
-		err = decoder.Decode(&request)
-		if err == nil {
-			var extra any
-			err = decoder.Decode(&extra)
-			if err != io.EOF {
-				err = errors.New("request body must contain exactly one JSON object")
-			}
-		}
+		request, err = decodePeerRequest(body)
 		if err == nil {
 			err = validatePeerRequest(asn, request, a.config)
 		}
@@ -77,6 +69,27 @@ func (a *Agent) peer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// decodePeerRequest parses exactly one JSON object, rejecting unknown fields,
+// empty bodies, and trailing content.
+func decodePeerRequest(body []byte) (PeerRequest, error) {
+	var request PeerRequest
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		if err == io.EOF {
+			return PeerRequest{}, errors.New("request body is empty")
+		}
+		return PeerRequest{}, err
+	}
+	// A well-formed body holds exactly one object, so a second decode must hit
+	// EOF. Leaving that io.EOF in err would reject every valid request.
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return PeerRequest{}, errors.New("request body must contain exactly one JSON object")
+	}
+	return request, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
