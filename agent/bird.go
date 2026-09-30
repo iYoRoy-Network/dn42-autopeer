@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func writeBirdConfigs(directory string, asn int, request PeerRequest, config Config) error {
@@ -17,27 +18,44 @@ func writeBirdConfigs(directory string, asn int, request PeerRequest, config Con
 			return err
 		}
 	}
+	description := birdDescription(request.Description)
 	if request.BGP.MPBGP {
 		content := fmt.Sprintf(
-			"protocol bgp 'dn42_peer_%d' from dnpeers {\n%s    neighbor %s as %d;\n    ipv4 {\n        extended next hop;\n    };\n};\n",
-			asn, birdDirect(*request.BGP.IPv6), birdNeighbor(asn, *request.BGP.IPv6), asn,
+			"protocol bgp 'dn42_peer_%d' from dnpeers {\n%s%s    neighbor %s as %d;\n    ipv4 {\n        extended next hop;\n    };\n};\n",
+			asn, description, birdDirect(*request.BGP.IPv6), birdNeighbor(asn, *request.BGP.IPv6), asn,
 		)
 		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d.conf", asn)), content, 0644)
 	}
 	if request.BGP.IPv4 != nil {
-		content := fmt.Sprintf("protocol bgp 'dn42_peer_%d_v4' from dnpeers {\n    neighbor %s as %d;\n    ipv4 {};\n};\n", asn, request.BGP.IPv4.Neighbor, asn)
+		// The dnpeers template enables both address families, so a session that
+		// carries only IPv4 has to switch the IPv6 channel off explicitly.
+		content := fmt.Sprintf(
+			"protocol bgp 'dn42_peer_%d_v4' from dnpeers {\n%s    neighbor %s as %d;\n    ipv6 {\n        import none;\n        export none;\n    };\n};\n",
+			asn, description, request.BGP.IPv4.Neighbor, asn,
+		)
 		if err := writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v4.conf", asn)), content, 0644); err != nil {
 			return err
 		}
 	}
 	if request.BGP.IPv6 != nil {
+		// Mirror of the IPv4-only case above.
 		content := fmt.Sprintf(
-			"protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n%s    neighbor %s as %d;\n    ipv6 {};\n};\n",
-			asn, birdDirect(*request.BGP.IPv6), birdNeighbor(asn, *request.BGP.IPv6), asn,
+			"protocol bgp 'dn42_peer_%d_v6' from dnpeers {\n%s%s    neighbor %s as %d;\n    ipv4 {\n        import none;\n        export none;\n    };\n};\n",
+			asn, description, birdDirect(*request.BGP.IPv6), birdNeighbor(asn, *request.BGP.IPv6), asn,
 		)
 		return writeRootFile(filepath.Join(directory, fmt.Sprintf("dn42_peer_%d_v6.conf", asn)), content, 0644)
 	}
 	return nil
+}
+
+// birdDescription renders the optional description line. Escaping matches the
+// Jinja template so a quote in a peer description cannot break the config.
+func birdDescription(description string) string {
+	if description == "" {
+		return ""
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(description)
+	return fmt.Sprintf("    description \"%s\";\n", escaped)
 }
 
 // birdNeighbor renders the neighbor clause, pinning a link-local address to the

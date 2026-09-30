@@ -80,3 +80,17 @@ func TestDecodePeerRequestEmptyBodyIsNotBareEOF(t *testing.T) {
 		t.Fatal("empty body still reports the bare io.EOF sentinel")
 	}
 }
+
+// The peer description is forwarded so the generated BIRD config can carry it.
+func TestDecodePeerRequestAcceptsDescription(t *testing.T) {
+	body := `{"description":"@someone https://example.test/",` +
+		`"wireguard":{"public_key":"k","endpoint":"1.2.3.4:1","listen_port":1,"mtu":1420},` +
+		`"bgp":{"ipv4":{"neighbor":"172.20.0.1"}}}`
+	request, err := decodePeerRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("description rejected: %v", err)
+	}
+	if request.Description != "@someone https://example.test/" {
+		t.Errorf("description = %q", request.Description)
+	}
+}

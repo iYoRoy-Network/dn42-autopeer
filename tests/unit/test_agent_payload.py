@@ -56,6 +56,7 @@ def test_agent_payload_for_mp_bgp(tmp_path: Path):
     payload = repo.agent_peer_payload("test01", 4242422001, peer)
 
     assert payload == {
+        "description": "contact",
         "wireguard": {
             "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             "endpoint": "peer.example:22024",

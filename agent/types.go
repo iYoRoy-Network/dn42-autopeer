@@ -47,6 +47,7 @@ type BGPRequest struct {
 	IPv6  *IPv6Request `json:"ipv6,omitempty"`
 }
 type PeerRequest struct {
-	WireGuard WireGuardRequest `json:"wireguard"`
-	BGP       BGPRequest       `json:"bgp"`
+	WireGuard   WireGuardRequest `json:"wireguard"`
+	BGP         BGPRequest       `json:"bgp"`
+	Description string           `json:"description"`
 }

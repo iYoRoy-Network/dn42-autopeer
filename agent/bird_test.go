@@ -16,45 +16,44 @@ func readBirdConf(t *testing.T, path string) string {
 	return string(data)
 }
 
-// A peer whose ASN matches the local one is iBGP to BIRD, which defaults such
-// sessions to multihop, and link-local addresses reject multihop outright.
-// Declaring the link-local session direct is what keeps it loadable.
-func TestWriteBirdConfigsMarksLinkLocalMPBGPAsDirect(t *testing.T) {
+func writeAndRead(t *testing.T, asn int, request PeerRequest, name string) string {
+	t.Helper()
 	directory := t.TempDir()
-	request := PeerRequest{BGP: BGPRequest{
-		MPBGP: true,
-		IPv6:  &IPv6Request{LLA: true, Neighbor: "fe80::1234"},
-	}}
-
-	if err := writeBirdConfigs(directory, 4242422024, request, Config{}); err != nil {
+	if err := writeBirdConfigs(directory, asn, request, Config{}); err != nil {
 		t.Fatalf("writeBirdConfigs: %v", err)
 	}
+	return readBirdConf(t, filepath.Join(directory, name))
+}
 
-	got := readBirdConf(t, filepath.Join(directory, "dn42_peer_4242422024.conf"))
-	want := "protocol bgp 'dn42_peer_4242422024' from dnpeers {\n" +
-		"    direct;\n" +
-		"    neighbor fe80::1234 % 'dn42_4242422024' as 4242422024;\n" +
-		"    ipv4 {\n" +
-		"        extended next hop;\n" +
-		"    };\n" +
-		"};\n"
+func assertConf(t *testing.T, got, want string) {
+	t.Helper()
 	if got != want {
 		t.Errorf("generated config mismatch\n got: %q\nwant: %q", got, want)
 	}
 }
 
+// A peer whose ASN matches the local one is iBGP to BIRD, which defaults such
+// sessions to multihop, and link-local addresses reject multihop outright.
+// Declaring the link-local session direct is what keeps it loadable.
+func TestWriteBirdConfigsMarksLinkLocalMPBGPAsDirect(t *testing.T) {
+	got := writeAndRead(t, 4242422024, PeerRequest{
+		BGP: BGPRequest{MPBGP: true, IPv6: &IPv6Request{LLA: true, Neighbor: "fe80::1234"}},
+	}, "dn42_peer_4242422024.conf")
+
+	assertConf(t, got, "protocol bgp 'dn42_peer_4242422024' from dnpeers {\n"+
+		"    direct;\n"+
+		"    neighbor fe80::1234 % 'dn42_4242422024' as 4242422024;\n"+
+		"    ipv4 {\n"+
+		"        extended next hop;\n"+
+		"    };\n"+
+		"};\n")
+}
+
 func TestWriteBirdConfigsLeavesGlobalIPv6Alone(t *testing.T) {
-	directory := t.TempDir()
-	request := PeerRequest{BGP: BGPRequest{
-		MPBGP: true,
-		IPv6:  &IPv6Request{Neighbor: "fd18:3e15:61d0::1"},
-	}}
+	got := writeAndRead(t, 4242423998, PeerRequest{
+		BGP: BGPRequest{MPBGP: true, IPv6: &IPv6Request{Neighbor: "fd18:3e15:61d0::1"}},
+	}, "dn42_peer_4242423998.conf")
 
-	if err := writeBirdConfigs(directory, 4242423998, request, Config{}); err != nil {
-		t.Fatalf("writeBirdConfigs: %v", err)
-	}
-
-	got := readBirdConf(t, filepath.Join(directory, "dn42_peer_4242423998.conf"))
 	if strings.Contains(got, "direct;") {
 		t.Errorf("a global IPv6 neighbor must not be pinned to direct mode:\n%s", got)
 	}
@@ -63,26 +62,62 @@ func TestWriteBirdConfigsLeavesGlobalIPv6Alone(t *testing.T) {
 	}
 }
 
-func TestWriteBirdConfigsSplitsAndMarksLinkLocalSession(t *testing.T) {
-	directory := t.TempDir()
+// The dnpeers template enables both address families, so each half of an
+// independent-session peer has to switch the other family off explicitly.
+// Without it an IPv4-only peer quietly exchanges IPv6 routes too.
+func TestWriteBirdConfigsClosesUnusedFamily(t *testing.T) {
 	request := PeerRequest{BGP: BGPRequest{
 		IPv4: &IPv4Request{Neighbor: "172.20.234.9"},
 		IPv6: &IPv6Request{LLA: true, Neighbor: "fe80::9"},
 	}}
 
-	if err := writeBirdConfigs(directory, 4242423997, request, Config{}); err != nil {
-		t.Fatalf("writeBirdConfigs: %v", err)
-	}
+	assertConf(t, writeAndRead(t, 4242423997, request, "dn42_peer_4242423997_v4.conf"),
+		"protocol bgp 'dn42_peer_4242423997_v4' from dnpeers {\n"+
+			"    neighbor 172.20.234.9 as 4242423997;\n"+
+			"    ipv6 {\n"+
+			"        import none;\n"+
+			"        export none;\n"+
+			"    };\n"+
+			"};\n")
 
-	v6 := readBirdConf(t, filepath.Join(directory, "dn42_peer_4242423997_v6.conf"))
-	if !strings.Contains(v6, "direct;") {
-		t.Errorf("link-local v6 session is missing direct:\n%s", v6)
+	assertConf(t, writeAndRead(t, 4242423997, request, "dn42_peer_4242423997_v6.conf"),
+		"protocol bgp 'dn42_peer_4242423997_v6' from dnpeers {\n"+
+			"    direct;\n"+
+			"    neighbor fe80::9 % 'dn42_4242423997' as 4242423997;\n"+
+			"    ipv4 {\n"+
+			"        import none;\n"+
+			"        export none;\n"+
+			"    };\n"+
+			"};\n")
+}
+
+func TestWriteBirdConfigsEmitsDescription(t *testing.T) {
+	got := writeAndRead(t, 4242422024, PeerRequest{
+		Description: "@someone https://example.test/peer",
+		BGP:         BGPRequest{MPBGP: true, IPv6: &IPv6Request{LLA: true, Neighbor: "fe80::1234"}},
+	}, "dn42_peer_4242422024.conf")
+
+	if !strings.Contains(got, "    description \"@someone https://example.test/peer\";\n") {
+		t.Errorf("description line missing:\n%s", got)
 	}
-	if !strings.Contains(v6, "neighbor fe80::9 % 'dn42_4242423997' as 4242423997;") {
-		t.Errorf("link-local neighbor lost its interface binding:\n%s", v6)
+	// The Jinja template puts it directly under the opening brace.
+	if !strings.HasPrefix(got, "protocol bgp 'dn42_peer_4242422024' from dnpeers {\n    description ") {
+		t.Errorf("description must lead the protocol block:\n%s", got)
 	}
-	v4 := readBirdConf(t, filepath.Join(directory, "dn42_peer_4242423997_v4.conf"))
-	if strings.Contains(v4, "direct;") {
-		t.Errorf("IPv4 sessions have no multihop default to override:\n%s", v4)
+}
+
+func TestBirdDescriptionEscapesQuotesAndBackslashes(t *testing.T) {
+	// Matches the template's replace('\\','\\\\') | replace('"','\\"').
+	cases := map[string]string{
+		"":                   "",
+		"plain":              "    description \"plain\";\n",
+		`he said "hi"`:       `    description "he said \"hi\"";` + "\n",
+		`back\slash`:         `    description "back\\slash";` + "\n",
+		`both "and" back\ok`: `    description "both \"and\" back\\ok";` + "\n",
+	}
+	for description, want := range cases {
+		if got := birdDescription(description); got != want {
+			t.Errorf("birdDescription(%q)\n got: %q\nwant: %q", description, got, want)
+		}
 	}
 }

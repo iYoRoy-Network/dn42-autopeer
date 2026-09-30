@@ -244,6 +244,7 @@ class ConfigRepository:
                 }
         wireguard = data.get("wireguard") or {}
         return {
+            "description": data.get("description"),
             "wireguard": {
                 "public_key": wireguard.get("public_key"),
                 "endpoint": wireguard.get("endpoint"),
